@@ -29,9 +29,8 @@ class AgentMessage(Base):
     run_id = Column(String, nullable=False)
     agent_name = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    message_type = Column(
-        String, default="status"
-    )  # plan, code, test, security, pr, status
+    message_type = Column(String, default="status")  # plan, code, test, security, pr, status
+    data = Column(Text, nullable=True)  # JSON structured data
     sequence = Column(Integer, nullable=False)
     timestamp = Column(DateTime, server_default=func.now())
 

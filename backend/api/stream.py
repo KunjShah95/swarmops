@@ -29,23 +29,23 @@ async def stream_agent_messages(run_id: str, db: Session = Depends(get_db)):
             # Get new messages since last poll
             messages = (
                 db.query(AgentMessage)
-                .filter(
-                    AgentMessage.run_id == run_id, AgentMessage.sequence > last_sequence
-                )
+                .filter(AgentMessage.run_id == run_id, AgentMessage.sequence > last_sequence)
                 .order_by(AgentMessage.sequence)
                 .all()
             )
 
             for msg in messages:
-                data = {
+                parsed_data = json.loads(msg.data) if msg.data else None
+                event_data = {
                     "event": "message",
                     "agent": msg.agent_name,
                     "content": msg.content,
                     "type": msg.message_type,
+                    "data": parsed_data,
                     "sequence": msg.sequence,
                     "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
                 }
-                yield f"data: {json.dumps(data)}\n\n"
+                yield f"data: {json.dumps(event_data)}\n\n"
                 last_sequence = msg.sequence
 
             # Check if run is complete

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -108,9 +109,7 @@ class SwarmOrchestrator:
         # Update agent state
         state = (
             db.query(AgentState)
-            .filter(
-                AgentState.run_id == run_id, AgentState.agent_name == "orchestrator"
-            )
+            .filter(AgentState.run_id == run_id, AgentState.agent_name == "orchestrator")
             .first()
         )
 
@@ -128,6 +127,7 @@ class SwarmOrchestrator:
             agent_name=message.agent_name,
             content=message.content,
             message_type=message.message_type,
+            data=json.dumps(message.data) if message.data else None,
             sequence=await self._get_next_sequence(run_id, db),
         )
         db.add(msg)
@@ -135,7 +135,7 @@ class SwarmOrchestrator:
         # Update state
         if state:
             state.status = "completed"
-            state.output = str(message.data)
+            state.output = json.dumps(message.data) if message.data else None
             db.commit()
 
         # Update run current agent
@@ -275,9 +275,7 @@ class SwarmOrchestrator:
 
         state = (
             db.query(AgentState)
-            .filter(
-                AgentState.run_id == run_id, AgentState.agent_name == "security_auditor"
-            )
+            .filter(AgentState.run_id == run_id, AgentState.agent_name == "security_auditor")
             .first()
         )
 

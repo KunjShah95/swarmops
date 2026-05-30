@@ -3,6 +3,9 @@ import './App.css'
 import AgentChat from './components/AgentChat'
 import AgentCard from './components/AgentCard'
 import DiffViewer from './components/DiffViewer'
+import TestResults from './components/TestResults'
+import SecurityReport from './components/SecurityReport'
+import PRStatus from './components/PRStatus'
 
 function App() {
   const [issueUrl, setIssueUrl] = useState('')
@@ -113,6 +116,12 @@ function App() {
             <>
               <AgentChat runId={runId} />
               <DiffViewer runId={runId} />
+              {/* Bottom row: test results, security report, PR status */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <TestResults />
+                <SecurityReport />
+                <PRStatus />
+              </div>
             </>
           )}
         </div>
