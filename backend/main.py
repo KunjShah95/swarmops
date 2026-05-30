@@ -7,6 +7,7 @@ import json
 from api.issues import router as issues_router
 from api.stream import router as stream_router
 from api.prs import router as prs_router
+from api.runs import router as runs_router
 from database import init_db
 from config import get_settings
 
@@ -31,13 +32,14 @@ app.add_middleware(
 app.include_router(issues_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(prs_router, prefix="/api")
+app.include_router(runs_router, prefix="/api")
 
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on startup."""
     init_db()
-    print("✅ Database initialized")
+    print("[OK] Database initialized")
 
 
 @app.get("/health")

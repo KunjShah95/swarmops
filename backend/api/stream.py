@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
-from models import AgentMessage, Run
+from models import AgentMessage, Run, AgentState
 import json
 import asyncio
 import time
@@ -12,21 +12,33 @@ router = APIRouter()
 
 @router.get("/stream/{run_id}")
 async def stream_agent_messages(run_id: str, db: Session = Depends(get_db)):
-    """Stream agent messages in real-time using Server-Sent Events (SSE)."""
+    """Stream agent messages and status changes in real-time using SSE."""
 
     async def event_generator():
-        """Generate SSE events for agent messages."""
         last_sequence = 0
-        max_wait_time = 300  # 5 minutes timeout
+        last_status_updates: dict = {}
+        max_wait_time = 300
         start_time = time.time()
 
         while True:
-            # Check for timeout
             if time.time() - start_time > max_wait_time:
                 yield f"data: {json.dumps({'event': 'timeout', 'message': 'Stream timed out'})}\n\n"
                 break
 
-            # Get new messages since last poll
+            # Poll for agent state changes (status updates)
+            agent_states = db.query(AgentState).filter(AgentState.run_id == run_id).all()
+            for state in agent_states:
+                prev = last_status_updates.get(state.agent_name)
+                if prev != state.status:
+                    last_status_updates[state.agent_name] = state.status
+                    status_data = {
+                        "event": "status",
+                        "agent": state.agent_name,
+                        "status": state.status,
+                    }
+                    yield f"data: {json.dumps(status_data)}\n\n"
+
+            # Poll for new messages
             messages = (
                 db.query(AgentMessage)
                 .filter(AgentMessage.run_id == run_id, AgentMessage.sequence > last_sequence)
@@ -51,7 +63,6 @@ async def stream_agent_messages(run_id: str, db: Session = Depends(get_db)):
             # Check if run is complete
             run = db.query(Run).filter(Run.id == run_id).first()
             if run and run.status in ["completed", "failed"]:
-                # Send completion event
                 completion_data = {
                     "event": "done",
                     "status": run.status,
@@ -61,7 +72,6 @@ async def stream_agent_messages(run_id: str, db: Session = Depends(get_db)):
                 yield f"data: {json.dumps(completion_data)}\n\n"
                 break
 
-            # Wait before next poll
             await asyncio.sleep(0.5)
 
     return StreamingResponse(
@@ -70,6 +80,6 @@ async def stream_agent_messages(run_id: str, db: Session = Depends(get_db)):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering if applicable
+            "X-Accel-Buffering": "no",
         },
     )

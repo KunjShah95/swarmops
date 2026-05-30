@@ -10,10 +10,8 @@ export function useAgentStream(runId: string | null) {
     const { addMessage, updateAgentStatus, setRunStatus, setPrUrl, setError } =
       agentStore.getState()
 
-    // Reset state for new run
     agentStore.getState().reset()
 
-    // Create SSE connection
     const eventSource = new EventSource(`/api/stream/${runId}`)
     eventSourceRef.current = eventSource
 
@@ -35,7 +33,11 @@ export function useAgentStream(runId: string | null) {
           return
         }
 
-        // Regular message
+        if (data.event === 'status') {
+          updateAgentStatus(data.agent, data.status)
+          return
+        }
+
         if (data.agent && data.content) {
           addMessage({
             agent: data.agent,
@@ -43,6 +45,7 @@ export function useAgentStream(runId: string | null) {
             type: data.type || 'status',
             timestamp: new Date(),
             sequence: data.sequence,
+            data: data.data || undefined,
           })
 
           updateAgentStatus(data.agent, 'speaking')
@@ -58,7 +61,6 @@ export function useAgentStream(runId: string | null) {
       eventSource.close()
     }
 
-    // Cleanup on unmount
     return () => {
       if (eventSource.readyState !== EventSource.CLOSED) {
         eventSource.close()

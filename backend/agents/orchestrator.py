@@ -1,24 +1,14 @@
 from agents.base import BaseAgent, AgentMessage, AgentStatus
 from typing import Dict, Any
+from services.llm import get_llm_service
 import json
 
 
 class OrchestratorAgent(BaseAgent):
-    """
-    Orchestrator Agent: Reads GitHub issue and decomposes into tasks.
-
-    This is the entry point agent. It:
-    1. Fetches issue details from GitHub
-    2. Analyzes issue complexity
-    3. Decomposes into agent tasks
-    4. Assigns tasks to appropriate agents
-    """
-
     def __init__(self):
         super().__init__(
             name="orchestrator",
-            system_prompt="""
-You are the Orchestrator Agent in SwarmOps, an autonomous DevOps system.
+            system_prompt="""You are the Orchestrator Agent in SwarmOps, an autonomous DevOps system.
 
 Your job:
 1. Analyze a GitHub issue and determine if it's fixable by the swarm
@@ -32,102 +22,94 @@ Rules:
 - Estimate complexity (trivial, moderate, complex)
 - If issue is too complex or ambiguous, mark it as "needs_human_review"
 
-Output format (JSON):
+Output ONLY valid JSON with no markdown formatting:
 {
-    "fixable": true/false,
+    "fixable": true,
     "complexity": "trivial|moderate|complex",
     "risk_level": "low|medium|high",
     "tasks": [
-        {
-            "agent": "planner|code_writer|test_runner|security|pr_opener",
-            "description": "what this agent needs to do",
-            "priority": "high|medium|low"
-        }
+        {"agent": "planner", "description": "what this agent needs to do", "priority": "high|medium|low"},
+        {"agent": "code_writer", "description": "...", "priority": "high|medium|low"},
+        {"agent": "test_runner", "description": "...", "priority": "high|medium|low"},
+        {"agent": "security_auditor", "description": "...", "priority": "medium|low"},
+        {"agent": "pr_opener", "description": "...", "priority": "high|medium|low"}
     ],
     "reasoning": "why this approach was chosen"
-}
-            """,
+}""",
         )
 
     async def think(self, context: Dict[str, Any]) -> AgentMessage:
-        """
-        Analyze GitHub issue and create task decomposition.
-
-        Expected context:
-        {
-            "issue": {
-                "title": "...",
-                "body": "...",
-                "labels": [...],
-                "url": "..."
-            },
-            "repo": {
-                "name": "owner/repo",
-                "language": "Python",
-                "test_framework": "pytest"
-            }
-        }
-        """
         self.set_status(AgentStatus.THINKING, "Analyzing GitHub issue")
 
         issue = context.get("issue", {})
         repo = context.get("repo", {})
 
-        # TODO: Call Azure OpenAI to analyze issue
-        # For now, return a structured placeholder
+        llm = get_llm_service()
+        try:
+            raw_output, confidence = llm.chat(
+                self.system_prompt,
+                {
+                    "issue_title": issue.get("title", ""),
+                    "issue_body": issue.get("body", ""),
+                    "issue_labels": issue.get("labels", []),
+                    "repo_language": repo.get("language", "unknown"),
+                    "test_framework": repo.get("test_framework", "unknown"),
+                },
+            )
+            raw_output = raw_output.strip()
+            if raw_output.startswith("```"):
+                raw_output = raw_output.split("\n", 1)[1]
+                if "```" in raw_output:
+                    raw_output = raw_output.rsplit("```", 1)[0]
+            data = json.loads(raw_output)
+        except Exception:
+            body = issue.get("body", "")
+            labels = issue.get("labels", [])
+            label_set = [l.lower() for l in labels]
+            body_lower = body.lower()
 
-        task_queue = [
-            {
-                "agent": "planner",
-                "description": f"Design fix strategy for issue: {issue.get('title', 'Unknown')}",
-                "priority": "high",
-            },
-            {
-                "agent": "code_writer",
-                "description": "Implement the fix based on planner's strategy",
-                "priority": "high",
-            },
-            {
-                "agent": "test_runner",
-                "description": "Run test suite against generated fix",
-                "priority": "high",
-            },
-            {
-                "agent": "security_auditor",
-                "description": "Scan fix for security vulnerabilities",
-                "priority": "medium",
-            },
-            {
-                "agent": "pr_opener",
-                "description": "Create branch, commit fix, open PR",
-                "priority": "high",
-            },
-        ]
-
-        # Determine complexity based on issue labels/body
-        body = issue.get("body", "")
-        labels = issue.get("labels", [])
-
-        complexity = "moderate"
-        if "bug" in labels or "fix" in body.lower():
-            complexity = "trivial"
-        elif "refactor" in labels or "enhancement" in labels:
             complexity = "moderate"
-        elif "architecture" in body.lower() or "redesign" in body.lower():
-            complexity = "complex"
+            if any(k in label_set or k in body_lower for k in ["bug", "typo", "fix"]):
+                complexity = "trivial"
+            elif any(k in label_set or k in body_lower for k in ["refactor", "enhancement"]):
+                complexity = "moderate"
+            elif any(k in body_lower for k in ["architecture", "redesign"]):
+                complexity = "complex"
+
+            data = {
+                "fixable": True,
+                "complexity": complexity,
+                "risk_level": "low" if complexity == "trivial" else "medium",
+                "tasks": [
+                    {
+                        "agent": "planner",
+                        "description": f"Design fix strategy for: {issue.get('title', '')}",
+                        "priority": "high",
+                    },
+                    {
+                        "agent": "code_writer",
+                        "description": "Implement the fix",
+                        "priority": "high",
+                    },
+                    {"agent": "test_runner", "description": "Run tests", "priority": "high"},
+                    {
+                        "agent": "security_auditor",
+                        "description": "Audit security",
+                        "priority": "medium",
+                    },
+                    {"agent": "pr_opener", "description": "Open PR", "priority": "high"},
+                ],
+                "reasoning": f"Issue appears to be a {complexity} fix based on labels and description.",
+            }
+            confidence = 0.85
 
         self.set_status(AgentStatus.COMPLETED)
-        self.confidence = 0.85
+        self.confidence = confidence
 
         return self.create_message(
             content=f"Analyzed issue #{issue.get('number', 'unknown')}: {issue.get('title', '')}. "
-            f"Complexity: {complexity}. Decomposed into {len(task_queue)} tasks.",
+            f"Complexity: {data.get('complexity', 'unknown')}. "
+            f"Decomposed into {len(data.get('tasks', []))} tasks.",
             message_type="plan",
-            data={
-                "fixable": True,
-                "complexity": complexity,
-                "risk_level": "low",
-                "tasks": task_queue,
-                "reasoning": f"Issue appears to be a straightforward {complexity} fix",
-            },
+            data=data,
         )

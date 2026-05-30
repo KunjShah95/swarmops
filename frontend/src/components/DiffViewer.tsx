@@ -1,13 +1,19 @@
 import { agentStore } from '../store/agentStore'
 
+interface DiffData {
+  diff?: string
+  files_changed?: string[]
+  summary?: string
+  syntax_valid?: boolean
+}
+
 export default function DiffViewer() {
   const messages = agentStore((state) => state.messages)
-  
-  // Find code writer messages with diffs
+
   const codeMessages = messages.filter(
-    (msg) => msg.type === 'code' && msg.data?.diff
+    (msg) => msg.type === 'code'
   )
-  
+
   if (codeMessages.length === 0) {
     return (
       <div className="bg-swarm-panel rounded-lg border border-swarm-border p-6">
@@ -18,14 +24,14 @@ export default function DiffViewer() {
       </div>
     )
   }
-  
+
   const latestCode = codeMessages[codeMessages.length - 1]
-  const diff = latestCode.data?.diff || 'No diff available'
-  const filesChanged = latestCode.data?.files_changed || []
-  
+  const codeData = latestCode.data as DiffData | undefined
+  const diff = codeData?.diff || 'No diff available'
+  const filesChanged = codeData?.files_changed || []
+
   return (
     <div className="bg-swarm-panel rounded-lg border border-swarm-border overflow-hidden">
-      {/* Header */}
       <div className="p-4 border-b border-swarm-border">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Code Changes</h2>
@@ -33,8 +39,7 @@ export default function DiffViewer() {
             {filesChanged.length} file{filesChanged.length !== 1 ? 's' : ''} changed
           </span>
         </div>
-        
-        {/* File tabs */}
+
         {filesChanged.length > 0 && (
           <div className="flex gap-2 mt-3">
             {filesChanged.map((file: string, index: number) => (
@@ -48,13 +53,12 @@ export default function DiffViewer() {
           </div>
         )}
       </div>
-      
-      {/* Diff Content */}
+
       <div className="p-4 overflow-x-auto">
         <pre className="text-sm font-mono">
           {diff.split('\n').map((line: string, index: number) => {
             let lineClass = 'text-gray-300'
-            
+
             if (line.startsWith('+')) {
               lineClass = 'text-green-400 bg-green-500/10'
             } else if (line.startsWith('-')) {
@@ -64,7 +68,7 @@ export default function DiffViewer() {
             } else if (line.startsWith('---') || line.startsWith('+++')) {
               lineClass = 'text-gray-500 font-semibold'
             }
-            
+
             return (
               <div key={index} className={`${lineClass} px-2 py-0.5`}>
                 {line}
@@ -73,12 +77,11 @@ export default function DiffViewer() {
           })}
         </pre>
       </div>
-      
-      {/* Summary */}
-      {latestCode.data?.summary && (
+
+      {codeData?.summary && (
         <div className="p-4 border-t border-swarm-border bg-swarm-dark/50">
           <div className="text-sm text-gray-400">
-            <strong className="text-gray-300">Summary:</strong> {latestCode.data.summary}
+            <strong className="text-gray-300">Summary:</strong> {codeData.summary}
           </div>
         </div>
       )}

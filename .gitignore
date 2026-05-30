@@ -8,3 +8,6 @@ dist/
 coverage/
 frontend/dist/
 backend/.venv/
+.superpowers/
+.planning
+PRDs/

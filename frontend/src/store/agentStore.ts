@@ -6,6 +6,7 @@ interface AgentMessage {
   type: string
   timestamp: Date
   sequence?: number
+  data?: Record<string, unknown>
 }
 
 interface AgentStatus {
