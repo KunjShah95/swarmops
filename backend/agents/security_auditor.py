@@ -115,7 +115,7 @@ Output ONLY valid JSON with no markdown formatting:
         self.confidence = confidence
         self.output = result
 
-        status = "✅ PASSED" if result["passed"] else "❌ FAILED"
+        status = "[OK] PASSED" if result["passed"] else "[FAIL] FAILED"
 
         return self.create_message(
             content=f"{status} Security audit. {len(result['findings'])} findings. "

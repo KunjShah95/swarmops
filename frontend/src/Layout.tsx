@@ -45,6 +45,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-gray-500">
           <p>SwarmOps &mdash; Autonomous DevOps Agent Swarm</p>
           <p className="mt-1">Built for Microsoft Build with AI 2026</p>
+          <p className="mt-2">
+            <a className="text-swarm-primary hover:underline" href="https://github.com/KunjShah95/SENTINEL-CLI/issues" target="_blank" rel="noreferrer">Repository issues</a>
+            <span className="mx-2">•</span>
+            <a className="text-swarm-primary hover:underline" href="https://github.com/KunjShah95/SENTINEL-CLI/issues/8" target="_blank" rel="noreferrer">Example: issue #8</a>
+          </p>
         </div>
       </footer>
     </div>

@@ -12,12 +12,12 @@ export default function Docs() {
       title: 'Agent Descriptions',
       content: '',
       agents: [
-        { name: 'Orchestrator', role: 'Coordinates the entire workflow, assigns tasks to agents, and tracks progress.' },
-        { name: 'Git & Code Agent', role: 'Clones repos, reads codebase structure, creates branches, and submits PRs.' },
-        { name: 'Developer Agent', role: 'Writes code changes to fix issues and implements features.' },
-        { name: 'Testing Agent', role: 'Runs existing tests and writes new tests for changes.' },
-        { name: 'Linting Agent', role: 'Checks code quality, formatting, and runs linters.' },
-        { name: 'Security Agent', role: 'Scans for vulnerabilities and security issues in code changes.' },
+        { name: 'Orchestrator', role: 'Analyzes the GitHub issue, determines fixability, decomposes into structured tasks, and assesses complexity and risk.' },
+        { name: 'Planner', role: 'Designs the fix strategy with step-by-step approach, identifies exact file paths and line numbers.' },
+        { name: 'Code Writer', role: 'Generates production-grade code diffs following existing code style with syntax validation.' },
+        { name: 'Test Runner', role: 'Analyzes code changes and predicts test outcomes with pass/fail reporting.' },
+        { name: 'Security Auditor', role: 'Scans diffs for vulnerabilities, hardcoded secrets, SQL injection, XSS, and blocks sensitive files.' },
+        { name: 'PR Opener', role: 'Creates feature branches, commits changes, and opens pull requests with full descriptions including test and security results.' },
       ],
     },
     {

@@ -52,7 +52,7 @@ class SwarmOrchestrator:
             # Update run status to running
             run = db.query(Run).filter(Run.id == run_id).first()
             if not run:
-                print(f"❌ Run {run_id} not found")
+                print(f"[FAIL] Run {run_id} not found")
                 return
 
             run.status = "running"
@@ -102,7 +102,7 @@ class SwarmOrchestrator:
             run.completed_at = datetime.now()
             db.commit()
 
-            print(f"✅ Swarm execution completed for run {run_id}")
+            print(f"[OK] Swarm execution completed for run {run_id}")
 
         except Exception as e:
             # Handle any unexpected errors
@@ -111,7 +111,7 @@ class SwarmOrchestrator:
                 run.status = "failed"
                 run.error = str(e)
                 db.commit()
-            print(f"❌ Swarm execution failed: {str(e)}")
+            print(f"[FAIL] Swarm execution failed: {str(e)}")
 
         finally:
             db.close()
@@ -152,6 +152,10 @@ class SwarmOrchestrator:
         if state:
             state.status = "completed"
             state.output = json.dumps(message.data) if message.data else None
+            state.confidence = agent.confidence
+            state.current_task = agent.current_task
+            state.started_at = agent.started_at
+            state.completed_at = agent.completed_at
             db.commit()
 
         # Update run current agent
@@ -195,6 +199,10 @@ class SwarmOrchestrator:
         if state:
             state.status = "completed"
             state.output = json.dumps(message.data) if message.data else None
+            state.confidence = agent.confidence
+            state.current_task = agent.current_task
+            state.started_at = agent.started_at
+            state.completed_at = agent.completed_at
             db.commit()
 
         run = db.query(Run).filter(Run.id == run_id).first()
@@ -236,6 +244,10 @@ class SwarmOrchestrator:
         if state:
             state.status = "completed"
             state.output = json.dumps(message.data) if message.data else None
+            state.confidence = agent.confidence
+            state.current_task = agent.current_task
+            state.started_at = agent.started_at
+            state.completed_at = agent.completed_at
             db.commit()
 
         run = db.query(Run).filter(Run.id == run_id).first()
@@ -277,6 +289,10 @@ class SwarmOrchestrator:
         if state:
             state.status = "completed"
             state.output = json.dumps(message.data) if message.data else None
+            state.confidence = agent.confidence
+            state.current_task = agent.current_task
+            state.started_at = agent.started_at
+            state.completed_at = agent.completed_at
             db.commit()
 
         run = db.query(Run).filter(Run.id == run_id).first()
@@ -318,6 +334,10 @@ class SwarmOrchestrator:
         if state:
             state.status = "completed"
             state.output = json.dumps(message.data) if message.data else None
+            state.confidence = agent.confidence
+            state.current_task = agent.current_task
+            state.started_at = agent.started_at
+            state.completed_at = agent.completed_at
             db.commit()
 
         run = db.query(Run).filter(Run.id == run_id).first()
@@ -359,6 +379,10 @@ class SwarmOrchestrator:
         if state:
             state.status = "completed"
             state.output = json.dumps(message.data) if message.data else None
+            state.confidence = agent.confidence
+            state.current_task = agent.current_task
+            state.started_at = agent.started_at
+            state.completed_at = agent.completed_at
             db.commit()
 
         # Update run with PR URL

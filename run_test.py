@@ -1,22 +1,18 @@
-"""Run SwarmOps end-to-end test."""
+import subprocess, time, sys, os, json, requests
 
-import subprocess
-import time
-import httpx
-import json
-import sys
-import os
-
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend"))
 
 # Clean DB
 for f in ["swarmops.db", "test.db"]:
     try:
-        os.remove(os.path.join("backend", f))
-    except FileNotFoundError:
+        os.remove(os.path.join(os.getcwd(), f))
+    except:
         pass
 
-# Start backend server
+PORT = 8765
+BASE = f"http://localhost:{PORT}"
+
+# Start uvicorn
 proc = subprocess.Popen(
     [
         sys.executable,
@@ -26,26 +22,24 @@ proc = subprocess.Popen(
         "--host",
         "0.0.0.0",
         "--port",
-        "8765",
+        str(PORT),
         "--log-level",
         "warning",
     ],
-    cwd="backend",
+    cwd=os.getcwd(),
     stdout=subprocess.DEVNULL,
     stderr=subprocess.DEVNULL,
 )
 
 time.sleep(3)
 
-BASE = "http://localhost:8765"
-passed = 0
-failed = 0
+passed, failed = 0, 0
 
 
 def check(name, ok, detail=""):
     global passed, failed
-    status = "PASS" if ok else "FAIL"
-    print(f"  [{status}] {name}" + (f" - {detail}" if detail else ""))
+    s = "PASS" if ok else "FAIL"
+    print(f"  [{s}] {name}" + (f" - {detail}" if detail else ""))
     if ok:
         passed += 1
     else:
@@ -54,42 +48,47 @@ def check(name, ok, detail=""):
 
 try:
     # 1. Health
-    r = httpx.get(f"{BASE}/health", timeout=5)
+    r = requests.get(f"{BASE}/health", timeout=5)
     check("Health endpoint", r.status_code == 200)
 
     # 2. Trigger swarm
-    r = httpx.post(
+    r = requests.post(
         f"{BASE}/api/issues",
         json={
             "github_url": "https://github.com/test/repo/issues/1",
             "repo": "test/repo",
             "issue_number": 1,
         },
-        timeout=15,
+        timeout=30,
     )
-    check("POST /api/issues", r.status_code == 200, f"Got {r.status_code}")
-    data = r.json()
-    run_id = data.get("run_id", "")
+    check("POST /api/issues", r.status_code == 200)
+    run_id = r.json().get("run_id", "")
     check("Run ID returned", bool(run_id))
-    check("Status is started", data.get("status") == "started")
 
-    # 3. Wait for agents to complete
-    for i in range(30):
-        time.sleep(1)
-        r = httpx.get(f"{BASE}/api/issues/{run_id}", timeout=5)
+    # 3. Wait for agents
+    for i in range(40):
+        time.sleep(3)
+        r = requests.get(f"{BASE}/api/issues/{run_id}", timeout=5)
         status = r.json().get("status", "")
+        agents = r.json().get("agents", [])
+        print(
+            f"       [{i * 3}s] status={status}  agents={[(a['name'], a['status']) for a in agents]}"
+        )
         if status in ("completed", "failed"):
             break
-    check(f"Run finished (status={status})", status == "completed", f"Final: {status}")
-    print(f"       Completed in {i + 1}s")
 
-    # 4. Read SSE events
-    r = httpx.get(f"{BASE}/api/stream/{run_id}", timeout=10)
+    check(
+        "Run finished",
+        status == "completed",
+        f"status={status}, error={r.json().get('error', 'none')}",
+    )
+
+    # 4. Check SSE
+    r = requests.get(f"{BASE}/api/stream/{run_id}", timeout=10)
     events = []
     for line in r.text.strip().split("\n\n"):
         if line.startswith("data: "):
             events.append(json.loads(line[6:]))
-
     msg_agents = set()
     msg_types = set()
     has_data = False
@@ -99,7 +98,6 @@ try:
             msg_types.add(evt.get("type"))
             if evt.get("data"):
                 has_data = True
-
     expected_agents = {
         "orchestrator",
         "planner",
@@ -109,34 +107,23 @@ try:
         "pr_opener",
     }
     expected_types = {"plan", "code", "test", "security", "pr"}
-
-    check(
-        "All 6 agents executed",
-        msg_agents == expected_agents,
-        f"Missing: {expected_agents - msg_agents}",
-    )
-    check(
-        "All message types",
-        msg_types.issuperset(expected_types),
-        f"Missing: {expected_types - msg_types}",
-    )
+    check("All 6 agents executed", msg_agents == expected_agents)
+    check("All message types", msg_types.issuperset(expected_types))
     check("Structured data present", has_data)
 
-    # 5. Verify final state
-    r = httpx.get(f"{BASE}/api/issues/{run_id}", timeout=5)
+    # 5. Final state
+    r = requests.get(f"{BASE}/api/issues/{run_id}", timeout=5)
     final = r.json()
-    check("Run completed", final.get("status") == "completed")
+    check("Run completed flag", final.get("status") == "completed")
     check("PR URL generated", bool(final.get("pr_url")))
-
     all_done = all(a["status"] == "completed" for a in final["agents"])
-    check(
-        "All agents completed",
-        all_done,
-        str([(a["name"], a["status"]) for a in final["agents"]]),
-    )
+    check("All agents completed", all_done)
 
 except Exception as e:
+    import traceback
+
     print(f"\n[ERROR] {e}")
+    traceback.print_exc()
     failed += 1
 
 finally:

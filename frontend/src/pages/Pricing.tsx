@@ -36,9 +36,12 @@ const tiers = [
 export default function Pricing() {
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <div className="text-center mb-12">
+      <div className="text-center mb-4">
         <h1 className="text-3xl font-bold mb-4">Simple, Transparent Pricing</h1>
         <p className="text-gray-400">Start free. Upgrade when you need more power.</p>
+      </div>
+      <div className="text-center mb-12">
+        <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-swarm-dark px-3 py-1 rounded-full border border-swarm-border">All plans include SSE live streaming & real-time dashboard</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {tiers.map(tier => (

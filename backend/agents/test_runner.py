@@ -70,7 +70,7 @@ Output ONLY valid JSON with no markdown formatting:
         self.confidence = confidence
         self.output = result
 
-        status_icon = "✅" if result.get("success") else "❌"
+        status_icon = "[OK]" if result.get("success") else "[FAIL]"
 
         return self.create_message(
             content=f"{status_icon} Test Results: {result.get('tests_passed', 0)}/"
