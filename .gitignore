@@ -16,3 +16,8 @@ backend/.venv/
 .superpowers/
 .planning
 PRDs/
+
+# Markdown — track README only (root or nested)
+*.md
+!README.md
+!**/README.md
