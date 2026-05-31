@@ -11,12 +11,12 @@ echo.
 echo Waiting for backend to initialize...
 timeout /t 3 /nobreak >nul
 echo.
-echo Starting Frontend (port 5173)...
-start "SwarmOps Frontend" cmd /c "cd /d "%~dp0frontend" && npx vite --host"
+echo Starting Frontend (port 3000)...
+start "SwarmOps Frontend" cmd /c "cd /d "%~dp0frontend" && set BACKEND_URL=http://127.0.0.1:8000&& npm run dev"
 echo.
 echo ==========================================
 echo   Backend API:  http://localhost:8000/docs
-echo   Frontend UI:  http://localhost:5173
+echo   Frontend UI:  http://localhost:3000
 echo   Health Check: http://localhost:8000/health
 echo ==========================================
 echo.

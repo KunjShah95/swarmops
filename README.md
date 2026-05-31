@@ -11,7 +11,7 @@ Built for **Microsoft Build with AI 2026** — Theme: Agent Swarms, Multi-Agent 
 ```mermaid
 %%{init: {'theme':'dark', 'themeVariables': { 'primaryColor': '#1e293b', 'primaryTextColor': '#e2e8f0', 'lineColor': '#0ea5e9' }}}%%
 graph TB
-    subgraph Frontend["Frontend (React + Vite)"]
+    subgraph Frontend["Frontend (Next.js)"]
         LP[Landing Page]
         DB[Dashboard]
         HR[History / Run Detail]
@@ -133,7 +133,22 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**
+Open **http://localhost:3000** (dev) or **http://localhost** (Docker)
+
+### 3. Docker (production-like, one command)
+
+```bash
+cp .env.example .env
+# Edit .env — add GEMINI_API_KEY, GITHUB_TOKEN, or Azure OpenAI keys
+docker compose up --build -d
+```
+
+Open **http://localhost** (nginx serves UI and proxies `/api` to the backend).
+
+Windows: run `start-docker.bat`
+
+See **[DEPLOY.md](DEPLOY.md)** for Azure Container Apps, Static Web Apps, and CI details.  
+See **[HACKATHON.md](HACKATHON.md)** for judge demo script and pitch.
 
 ---
 
@@ -213,7 +228,7 @@ swarmops/
 │       └── github.py         # GitHub API wrapper (PyGithub)
 ├── frontend/
 │   ├── index.html            # HTML entry
-│   ├── vite.config.ts        # Vite config with API proxy
+│   ├── next.config.ts        # Next.js + API rewrites to backend
 │   ├── tailwind.config.js    # Tailwind theme (dark)
 │   ├── package.json          # Dependencies
 │   ├── tsconfig.json         # TypeScript config
@@ -263,13 +278,13 @@ swarmops/
 | **FastAPI** | REST API + SSE streaming |
 | **SQLite + SQLAlchemy** | Local database (zero config) |
 | **AutoGen 0.4+** | Agent swarm orchestration |
-| **Azure OpenAI GPT-4o** | Agent reasoning (6 agents) |
+| **Azure OpenAI / Gemini / Groq** | Agent reasoning via multi-provider LLM router |
 | **PyGithub** | GitHub API integration |
 
 ### Frontend
 | Technology | Purpose |
 |------------|---------|
-| **React 18 + Vite** | UI framework + build tool |
+| **Next.js 16 + React** | App router, shadcn UI, API proxy |
 | **TypeScript** | Type safety |
 | **Tailwind CSS** | Styling (dark theme) |
 | **React Router v6** | Client-side routing (lazy loaded) |
@@ -311,6 +326,18 @@ Each agent runs sequentially with shared context. If an agent fails, the previou
 |------|-------|
 | **Backend + Database** | FastAPI, AutoGen agents, SQLite |
 | **AI + Frontend** | Azure OpenAI, React dashboard |
+
+---
+
+## Deployment
+
+| Method | Command | URL |
+|--------|---------|-----|
+| Docker Compose | `docker compose up --build -d` | http://localhost |
+| Local dev | `start-all.bat` or backend + `npm run dev` in `frontend/` | http://localhost:3000 |
+| Azure | Container Apps + Static Web Apps | See [DEPLOY.md](DEPLOY.md) |
+
+Health check: `GET /health` — reports LLM providers and GitHub configuration.
 
 ---
 

@@ -113,16 +113,12 @@ class GitHubService:
         except Exception as e:
             raise Exception(f"Failed to fetch file: {str(e)}")
 
-    def create_branch(
-        self, repo: str, branch_name: str, base_branch: str = "main"
-    ) -> str:
+    def create_branch(self, repo: str, branch_name: str, base_branch: str = "main") -> str:
         """Create a new branch."""
         try:
             repository = self.github.get_repo(repo)
             base_ref = repository.get_branch(base_branch)
-            repository.create_git_ref(
-                ref=f"refs/heads/{branch_name}", sha=base_ref.commit.sha
-            )
+            repository.create_git_ref(ref=f"refs/heads/{branch_name}", sha=base_ref.commit.sha)
             return f"https://github.com/{repo}/tree/{branch_name}"
         except Exception as e:
             raise Exception(f"Failed to create branch: {str(e)}")
@@ -165,12 +161,19 @@ class GitHubService:
         """Create a pull request."""
         try:
             repository = self.github.get_repo(repo)
-            pr = repository.create_pull(
-                title=title, body=body, head=head_branch, base=base_branch
-            )
+            pr = repository.create_pull(title=title, body=body, head=head_branch, base=base_branch)
             return pr.html_url
         except Exception as e:
             raise Exception(f"Failed to create PR: {str(e)}")
+
+    def get_repo_file_tree(self, repo: str, branch: str = "main") -> List[str]:
+        """Get recursive file tree of a repository."""
+        try:
+            repository = self.github.get_repo(repo)
+            tree = repository.get_git_tree(branch, recursive=True).tree
+            return sorted([item.path for item in tree if item.type == "blob"])
+        except Exception as e:
+            raise Exception(f"Failed to fetch file tree: {str(e)}")
 
     def get_recent_commits(self, repo: str, limit: int = 10) -> List[Dict]:
         """Get recent commits for context."""

@@ -222,9 +222,9 @@ class LLMService:
         if "orchestrator" in prompt_lower:
             return self._fallback_orchestrator(title, body, labels), 0.85
         elif "planner" in prompt_lower:
-            return self._fallback_planner(issue), 0.8
+            return self._fallback_planner(issue, context), 0.8
         elif "code_writer" in prompt_lower or "code writer" in prompt_lower:
-            return self._fallback_code_writer(issue, context.get("planner_output", {})), 0.85
+            return self._fallback_code_writer(issue, context), 0.85
         elif "test_runner" in prompt_lower or "test runner" in prompt_lower:
             return self._fallback_test_runner(), 0.9
         elif "security_auditor" in prompt_lower or "security auditor" in prompt_lower:
@@ -271,12 +271,66 @@ class LLMService:
             }
         )
 
-    def _fallback_planner(self, issue: Dict) -> str:
+    def _fallback_planner(self, issue: Dict, context: Dict) -> str:
+        file_tree = context.get("repo", {}).get("file_tree", [])
+        fallback_files = ["src/index.js:1"]
+        if file_tree:
+            issue_text = (issue.get("title", "") + " " + issue.get("body", "")).lower()
+            stop_words = {
+                "the",
+                "a",
+                "an",
+                "in",
+                "to",
+                "for",
+                "of",
+                "and",
+                "is",
+                "it",
+                "on",
+                "at",
+                "with",
+                "by",
+                "from",
+                "as",
+                "be",
+                "this",
+                "that",
+                "fix",
+                "bug",
+                "issue",
+                "error",
+                "problem",
+                "not",
+                "does",
+                "when",
+                "if",
+            }
+            keywords = [
+                w for w in issue_text.split() if w.isalnum() and len(w) > 2 and w not in stop_words
+            ]
+            scored = []
+            for fp in file_tree:
+                if not fp.endswith((".js", ".py", ".ts", ".tsx", ".jsx")):
+                    continue
+                path_lower = fp.lower().replace("\\", "/")
+                score = sum(3 for kw in keywords if kw in path_lower)
+                fn = path_lower.split("/")[-1]
+                score += sum(5 for kw in keywords if kw in fn)
+                if score > 0:
+                    scored.append((score, fp))
+            if scored:
+                scored.sort(key=lambda x: -x[0])
+                fallback_files = [f"{scored[0][1]}:1"]
+            else:
+                js_files = [f for f in file_tree if f.endswith((".js", ".py", ".ts", ".tsx"))]
+                if js_files:
+                    fallback_files = [f"{js_files[0]}:1"]
         return json.dumps(
             {
                 "plan": {
                     "summary": f"Fix for: {issue.get('title', '')}",
-                    "files_to_change": ["src/main.py:42"],
+                    "files_to_change": fallback_files,
                     "approach": "1. Locate bug\n2. Apply minimal fix\n3. Add tests\n4. Verify no regressions",
                     "alternatives": ["Full refactor"],
                     "risk_level": "low",
@@ -285,24 +339,58 @@ class LLMService:
             }
         )
 
-    def _fallback_code_writer(self, issue: Dict, planner_out: Dict) -> str:
-        files = planner_out.get("plan", {}).get("files_to_change", ["src/main.py"])
-        diff_lines = []
+    def _fallback_code_writer(self, issue: Dict, context: Dict) -> str:
+        planner_out = context.get("planner_output", {})
+        files = planner_out.get("plan", {}).get("files_to_change", [])
+        file_contents = context.get("file_contents", {})
+        file_tree = context.get("repo", {}).get("file_tree", [])
+        resolved = []
         for f in files:
             fn = f.split(":")[0] if ":" in f else f
+            fn = fn.lstrip("/")
+            if fn in file_contents:
+                resolved.append(fn)
+            elif file_tree and not resolved:
+                candidates = [tf for tf in file_tree if tf.endswith(("index.js", "main.js"))]
+                if candidates:
+                    resolved.append(candidates[0])
+        if not resolved:
+            resolved = ["src/index.js"]
+
+        issue_title = issue.get("title", "Unknown issue")
+        issue_number = issue.get("number", 0)
+        issue_url = issue.get("url", f"#issue-{issue_number}")
+        comment_marker = (
+            f"// [SWARMOPS] Issue #{issue_number}: {issue_title}\n"
+            f"// TODO: Apply fix — see {issue_url}\n"
+        )
+        fc_out = {}
+        diff_lines = []
+        for fn in resolved:
+            orig = file_contents.get(fn, "// placeholder\nmodule.exports = {};\n")
+            lines = orig.splitlines(True)
+            inject_at = 0
+            for idx, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped and not stripped.startswith(("#", "//", "/*", "*", "<!--")):
+                    inject_at = idx
+                    break
+            lines.insert(inject_at, comment_marker)
+            new_content = "".join(lines)
+            fc_out[fn] = new_content
+            orig_first = lines[inject_at + 1].strip() if inject_at + 1 < len(lines) else ""
             diff_lines += [
                 f"--- a/{fn}",
                 f"+++ b/{fn}",
-                "@@ -1,3 +1,4 @@",
-                " # Original content",
-                "-buggy_line()",
-                "+fixed_line()",
-                " # Rest unchanged",
+                f"@@ -{inject_at + 1},1 +{inject_at + 1},1 @@",
+                f"-{orig_first if orig_first else ''}",
+                f"+{orig_first if orig_first else ''}",
             ]
         return json.dumps(
             {
                 "diff": "\n".join(diff_lines),
-                "files_changed": [f.split(":")[0] if ":" in f else f for f in files],
+                "files_changed": resolved,
+                "file_contents": fc_out,
                 "summary": f"Fixed: {issue.get('title', '')}",
                 "syntax_valid": True,
             }
@@ -353,14 +441,27 @@ class LLMService:
         num = issue.get("number", 0)
         title = issue.get("title", "Fix")
         repo_name = repo.get("name", "owner/repo")
+        branch = f"fix/issue-{num}-swarmops"
+        description = (
+            f"## Summary\nAutomated fix for #{num}: {title}\n\n"
+            f"## Changes\n{cw.get('summary', '')}\n\n"
+            f"## Files Modified\n"
+        )
+        for f in cw.get("files_changed", []):
+            description += f"- {f}\n"
+        description += (
+            f"\n## Test Results\n[OK] {tr.get('tests_passed', 0)}/{tr.get('total_tests', 0)} passed\n\n"
+            f"## Security Audit\n{'[OK] Passed' if sec.get('passed', False) else '[FAIL] Failed'}\n\n"
+            f"---\n*Generated by SwarmOps*"
+        )
         return json.dumps(
             {
-                "pr_url": f"https://github.com/{repo_name}/pull/{num}",
+                "pr_url": f"https://github.com/{repo_name}/pull/new/{branch}",
                 "pr_number": num,
-                "branch": f"fix/issue-{num}-swarmops",
-                "commit_sha": "abc123def456",
+                "branch": branch,
+                "commit_sha": "uncommitted",
                 "title": f"fix: {title[:50].lower()}",
-                "description": f"## Summary\nAutomated fix for #{num}: {title}\n\n## Changes\n{cw.get('summary', '')}\n\n## Test Results\n[OK] {tr.get('tests_passed', 0)}/{tr.get('total_tests', 0)} passed\n\n## Security Audit\n{'[OK] Passed' if sec.get('passed', False) else '[FAIL] Failed'}\n\n---\n*Generated by SwarmOps*",
+                "description": description,
             }
         )
 

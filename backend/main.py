@@ -9,7 +9,8 @@ from api.stream import router as stream_router
 from api.prs import router as prs_router
 from api.runs import router as runs_router
 from database import init_db
-from config import get_settings
+from config import get_settings, get_cors_origins
+from services.llm import get_llm_service
 
 settings = get_settings()
 
@@ -22,7 +23,7 @@ app = FastAPI(
 # CORS middleware - allows frontend to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,8 +45,19 @@ async def startup_event():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "ok", "service": "swarmops-backend", "version": "1.0.0"}
+    """Health check endpoint for load balancers and Docker."""
+    llm = get_llm_service()
+    return {
+        "status": "ok",
+        "service": "swarmops-backend",
+        "version": "1.0.0",
+        "llm": {
+            "available": llm.is_available,
+            "providers": llm.providers,
+            "mode": "live" if llm.is_available else "fallback",
+        },
+        "github_configured": bool(settings.github_token),
+    }
 
 
 @app.get("/")

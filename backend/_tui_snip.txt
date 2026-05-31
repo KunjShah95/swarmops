@@ -1,0 +1,163 @@
+
+=== src/tui/lib/version.ts ===
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+let _version: string | null = null;
+
+function findPackageJson(): string | null {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    join(__dirname, '..', '..', '..', 'package.json'),
+    join(__dirname, '..', '..', '..', '..', 'package.json'),
+    join(process.cwd(), 'package.json'),
+  ];
+  for (const p of candidates) {
+    try {
+      return JSON.parse(readFileSync(p, 'utf-8')).version;
+    } catch {}
+  }
+  return null;
+}
+
+export function getVersion(): string {
+  if (_version) return _version;
+  _version = findPackageJson() || '2.0.0';
+  return _version;
+}
+
+export function getDisplayVersion(): string {
+  return `v${getVersion()}`;
+}
+
+=== src/tui/index.tsx ===
+import React, { isValidElement } from 'react';
+import { createCliRenderer } from '@opentui/core';
+import { createRoot } from '@opentui/react';
+import { createMemoryRouter, RouterProvider } from 'react-router';
+import { RootLayout } from './layouts/root-layout';
+import { Home } from './screens/home';
+import { Session } from './screens/session';
+import { Dashboard } from './screens/dashboard';
+
+const router = createMemoryRouter([
+  {
+    path: '/',
+    element: <RootLayout />,
+    children: [
+      { index: true, element: <Home /> },
+      { path: 'session', element: <Session /> },
+      { path: 'dashboard', element: <Dashboard /> },
+    ],
+  },
+]);
+
+function App() {
+  return <RouterProvider router={router} />;
+}
+
+// Do not initialize the renderer until we've validated the element tree
+// to avoid invoking native renderer code (Bun/FFI) during preflight.
+
+// Preflight: walk the React element tree to catch any plain string children
+// being attached to non-<text> hosts which would crash the OpenTUI renderer.
+function inspectForBareStrings(node: any, path: string[] = []) {
+  const problems: Array<{ path: string; parentType: any; child: any }> = [];
+
+  function visit(n: any, p: string[]) {
+    if (n == null) return;
+    if (typeof n === 'string' || typeof n === 'number') {
+      // parent path is where this bare string sits
+      problems.push({
+        path: p.join(' > ') || '<root>',
+        parentType: p[p.length - 1] || null,
+        child: n,
+      });
+      return;
+    }
+    if (Array.isArray(n)) {
+      n.forEach((c, i) => visit(c, [...p, `[${i}]`]));
+      return;
+    }
+    if (isValidElement(n)) {
+      const type = n.type;
+      const display =
+        typeof type === 'string'
+          ? type
+          : (type && ((type as any).name || (type as any).displayName)) || String(type);
+      const nextPath = [...p, display];
+      const props: any = n.props || {};
+      if (props.children) visit(props.children, nextPath);
+      return;
+    }
+    // plain object (cou
+=== src/tui/lib/commands.ts ===
+import { execSync } from 'child_process';
+import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs';
+import { TOOLS, type ToolResult } from './tools';
+import { THEMES, DEFAULT_THEME } from '../theme';
+import { chat, getProviderInfo, getOllamaModels } from './chat';
+import { applyTheme } from '../providers/theme';
+
+export type CommandHandler = {
+  handler: (args: string) => Promise<string>;
+  description: string;
+};
+
+const sentinelCmds: Record<string, string[]> = {
+  analyze: ['analyze'],
+  'full-scan': ['full-scan'],
+  security: ['security-audit'],
+  secrets: ['scan-secrets'],
+  container: ['container'],
+  frontend: ['frontend'],
+  backend: ['backend'],
+  diff: ['diff'],
+  'pre-commit': ['pre-commit'],
+  blame: ['blame'],
+  fix: ['fix'],
+  agents: ['agents'],
+  chat: ['chat'],
+  report: ['report'],
+  status: ['status'],
+  stats: ['stats'],
+  complexity: ['complexity'],
+  'best-practices': ['best-practices'],
+  'multi-file': ['multi-file'],
+  config: ['config'],
+  cache: ['cache'],
+  validate: ['validate'],
+  parallel: ['parallel'],
+  webhook: ['webhook'],
+  server: ['server'],
+  policy: ['policy'],
+  'install-hooks': ['install-hooks'],
+  'test-suggestions': ['test-suggestions'],
+  'pr-description': ['pr-description'],
+  'pr-summary': ['pr-summary'],
+  explain: ['explain'],
+  setup: ['setup'],
+  secret_patterns: ['secret-patterns'],
+  lint: ['lint'],
+  ollama: ['ollama'],
+  sessions: ['sessions'],
+  wizard: ['wizard'],
+};
+
+function formatResult(result: ToolResult): string {
+  if (result.error) {
+    return `\u2716 Error: ${result.error}`;
+  }
+  return result.output || '(done)';
+}
+
+function buildCommandHandler(
+  toolName: string,
+  argMap?: (args: string) => Record<string, unknown>
+): (args: string) => Promise<string> {
+  return async (args: string) => {
+    const tool = TOOLS[toolName];
+    if (!tool) return `Unknown command: ${toolName}`;
+    const params = argMap ? argMap(args) : {};
+    const result = await tool.execute(Object.keys(params).length > 0

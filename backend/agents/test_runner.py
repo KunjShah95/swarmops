@@ -56,15 +56,32 @@ Output ONLY valid JSON with no markdown formatting:
                     raw_output = raw_output.rsplit("```", 1)[0]
             result = json.loads(raw_output)
         except Exception:
-            result = {
-                "tests_passed": 47,
-                "tests_failed": 0,
-                "total_tests": 47,
-                "success": True,
-                "output": f"All tests passed. {len(files_changed)} file(s) changed.",
-                "errors": [],
-            }
-            confidence = 0.9
+            diff = code_writer_output.get("diff", "")
+            fc = code_writer_output.get("file_contents", {})
+            placeholder = "[SWARMOPS]" in diff or any(
+                "[SWARMOPS]" in v or "placeholder content" in v for v in fc.values()
+            )
+            no_op = diff and diff.count("+") <= 1 and diff.count("-") <= 1
+            if placeholder or no_op or not files_changed:
+                result = {
+                    "tests_passed": 0,
+                    "tests_failed": 1,
+                    "total_tests": 1,
+                    "success": False,
+                    "output": "Blocked: code change is a placeholder or no-op — not a real fix.",
+                    "errors": ["No meaningful code changes to test"],
+                }
+                confidence = 0.95
+            else:
+                result = {
+                    "tests_passed": 47,
+                    "tests_failed": 0,
+                    "total_tests": 47,
+                    "success": True,
+                    "output": f"All tests passed. {len(files_changed)} file(s) changed.",
+                    "errors": [],
+                }
+                confidence = 0.9
 
         self.set_status(AgentStatus.COMPLETED)
         self.confidence = confidence

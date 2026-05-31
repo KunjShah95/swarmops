@@ -275,6 +275,17 @@ sqlite3 swarmops.db "SELECT * FROM runs;"
 
 ---
 
+## Docker (fastest for demos)
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+Open **http://localhost** — see [DEPLOY.md](DEPLOY.md) and [HACKATHON.md](HACKATHON.md).
+
+---
+
 ## Good Luck! 🚀
 
 You have a solid scaffold. Now it's time to connect the real APIs and make it work!

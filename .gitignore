@@ -1,4 +1,7 @@
 .env
+.env.local
+*.db
+swarmops.db
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -7,6 +10,8 @@ node_modules/
 dist/
 coverage/
 frontend/dist/
+frontend/.next/
+_external_frontend/
 backend/.venv/
 .superpowers/
 .planning

@@ -45,6 +45,8 @@ class Settings(BaseSettings):
 
     # Frontend (for CORS)
     frontend_url: str = "http://localhost:5173"
+    # Comma-separated allowed origins (production). Falls back to frontend_url if empty.
+    cors_origins: str = ""
 
     class Config:
         env_file = ".env"
@@ -55,3 +57,11 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
+
+
+def get_cors_origins() -> list[str]:
+    """Resolve CORS allowlist from CORS_ORIGINS or FRONTEND_URL."""
+    settings = get_settings()
+    if settings.cors_origins.strip():
+        return [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    return [settings.frontend_url]

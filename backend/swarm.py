@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from agents.base import AgentRegistry, AgentStatus, agent_registry
 from agents.orchestrator import OrchestratorAgent
 from agents.planner import PlannerAgent
+from agents.file_resolver import pick_source_files
 from agents.code_writer import CodeWriterAgent
 from agents.test_runner import TestRunnerAgent
 from agents.security_auditor import SecurityAuditorAgent
@@ -86,12 +87,51 @@ class SwarmOrchestrator:
                     "description": "A sample repository for the SwarmOps demo.",
                 }
 
+            # Fetch repo file tree so agents know what files exist
+            try:
+                file_tree = github_service.get_repo_file_tree(
+                    repo, repo_context.get("default_branch", "main")
+                )
+                repo_context["file_tree"] = file_tree
+                print(f"[INFO] Repo file tree: {len(file_tree)} files")
+            except Exception as e:
+                print(f"[WARN] Could not fetch file tree: {e}")
+                repo_context["file_tree"] = []
+
             # Build shared context
             context = {"issue": issue, "repo": repo_context, "run_id": run_id}
 
             # Execute agents in sequence
             await self._execute_orchestrator(run_id, context, db)
             await self._execute_planner(run_id, context, db)
+
+            # Fetch file contents for files the planner identified
+            planner_output = context.get("planner_output", {})
+            plan = (
+                planner_output.get("plan", planner_output)
+                if isinstance(planner_output, dict)
+                else {}
+            )
+            files_to_change = plan.get("files_to_change", [])
+            if not files_to_change:
+                files_to_change = pick_source_files(issue, repo_context.get("file_tree", []))
+                plan["files_to_change"] = files_to_change
+                context["planner_output"] = {"plan": plan}
+                print(f"[INFO] Swarm resolved files heuristically: {files_to_change}")
+            file_contents = {}
+            for f in files_to_change:
+                fname = f.split(":")[0] if ":" in f else f
+                fname = fname.lstrip("/")
+                try:
+                    content = github_service.get_file_content(
+                        repo, fname, repo_context.get("default_branch", "main")
+                    )
+                    file_contents[fname] = content
+                except Exception as e2:
+                    print(f"[WARN] Could not fetch {fname}: {e2}")
+            context["file_contents"] = file_contents
+            print(f"[INFO] Fetched {len(file_contents)} file(s) for code_writer context")
+
             await self._execute_code_writer(run_id, context, db)
             await self._execute_test_runner(run_id, context, db)
             await self._execute_security(run_id, context, db)

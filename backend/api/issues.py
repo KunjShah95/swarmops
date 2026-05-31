@@ -55,10 +55,20 @@ async def trigger_swarm(request: IssueRequest, db: Session = Depends(get_db)):
 
     db.commit()
 
-    # Start agent swarm in background task
-    asyncio.create_task(
-        swarm_orchestrator.execute(run_id, request.repo, request.issue_number)
-    )
+    # Start agent swarm in a separate background thread to prevent blocking the main event loop thread with blocking operations (like PyGithub and LLM chat)
+    import threading
+
+    def run_swarm_in_thread():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(
+                swarm_orchestrator.execute(run_id, request.repo, request.issue_number)
+            )
+        finally:
+            loop.close()
+
+    threading.Thread(target=run_swarm_in_thread, daemon=True).start()
 
     return {
         "run_id": run_id,

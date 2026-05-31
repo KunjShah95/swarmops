@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+*.db
+_ai.txt
+_pq.txt
+_tui_snip.txt
+perf_test.py
+test_e2e.py

@@ -12,6 +12,11 @@ for f in ["swarmops.db", "test.db"]:
         pass
 
 from fastapi.testclient import TestClient
+from database import init_db
+import models  # noqa: F401 — register ORM tables before create_all
+
+init_db()
+
 from main import app
 
 client = TestClient(app)
