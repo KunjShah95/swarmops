@@ -39,7 +39,7 @@ export function IssueStartForm({ onStarted }: IssueStartFormProps) {
       </p>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
-          type="url"
+          type="text"
           value={issueUrl}
           onChange={(e) => setIssueUrl(e.target.value)}
           placeholder="https://github.com/owner/repo/issues/42"
