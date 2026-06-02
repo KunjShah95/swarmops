@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import json
+import os
 
 # Import routers
 from api.issues import router as issues_router
@@ -19,6 +20,32 @@ app = FastAPI(
     description="Autonomous DevOps Agent Swarm Backend",
     version="1.0.0",
 )
+
+# ── Startup diagnostics ──────────────────────────────────────────────
+def _log_startup_warnings():
+    """Print warnings if critical config is missing."""
+    llm = get_llm_service()
+
+    if not settings.github_token:
+        print(
+            "[WARN]  GITHUB_TOKEN is not set. "
+            "GitHub API calls will use unauthenticated requests (60/hr rate limit). "
+            "Set it in .env or your environment."
+        )
+    if not llm.is_available:
+        print(
+            "[WARN]  No LLM provider configured. "
+            "All agent output will use smart fallback (mock data). "
+            "Set LLM_PROVIDER and at least one API key in .env (in project root)."
+        )
+    if not os.path.exists(".env") and not os.path.exists("../.env"):
+        print(
+            "[INFO]  No .env file found. "
+            "Create one in the PROJECT ROOT from .env.example:\n"
+            "         copy .env.example .env"
+        )
+    print(f"[OK]    LLM service available: {llm.is_available}")
+    print(f"[OK]    GitHub configured: {bool(settings.github_token)}")
 
 # CORS middleware - allows frontend to connect
 app.add_middleware(
@@ -41,6 +68,7 @@ async def startup_event():
     """Initialize database on startup."""
     init_db()
     print("[OK] Database initialized")
+    _log_startup_warnings()
 
 
 @app.get("/health")

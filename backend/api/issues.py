@@ -55,7 +55,8 @@ async def trigger_swarm(request: IssueRequest, db: Session = Depends(get_db)):
 
     db.commit()
 
-    # Start agent swarm in a separate background thread to prevent blocking the main event loop thread with blocking operations (like PyGithub and LLM chat)
+    # Start agent swarm in a separate background thread to prevent blocking the
+    # main event loop thread with blocking operations (like PyGithub and LLM chat).
     import threading
 
     def run_swarm_in_thread():
@@ -65,6 +66,22 @@ async def trigger_swarm(request: IssueRequest, db: Session = Depends(get_db)):
             loop.run_until_complete(
                 swarm_orchestrator.execute(run_id, request.repo, request.issue_number)
             )
+        except Exception as exc:
+            # Last-resort catch: if swarm_orchestrator.execute() itself throws
+            # (e.g. before its own try/except kicks in), mark the run as failed
+            # in the DB so the SSE stream sees it.
+            print(f"[FAIL] Unhandled exception in swarm thread: {exc}")
+            try:
+                from database import SessionLocal
+                fail_db = SessionLocal()
+                run_record = fail_db.query(Run).filter(Run.id == run_id).first()
+                if run_record:
+                    run_record.status = "failed"
+                    run_record.error = f"Unhandled thread exception: {exc}"
+                    fail_db.commit()
+                fail_db.close()
+            except Exception as db_err:
+                print(f"[FAIL] Could not update run status after failure: {db_err}")
         finally:
             loop.close()
 
