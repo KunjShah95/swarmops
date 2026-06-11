@@ -16,6 +16,8 @@ export function useAgentStream(runId: string | null) {
       setPrUrl,
       setError,
       reset,
+      setTokensUsed,
+      setEstimatedCost,
     } = useSwarmStore.getState();
 
     reset();
@@ -27,6 +29,13 @@ export function useAgentStream(runId: string | null) {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
+        if (data.tokens_used !== undefined) {
+          setTokensUsed(data.tokens_used);
+        }
+        if (data.estimated_cost !== undefined) {
+          setEstimatedCost(data.estimated_cost);
+        }
 
         if (data.event === "done") {
           setRunStatus(data.status);

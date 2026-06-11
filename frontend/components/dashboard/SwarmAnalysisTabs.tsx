@@ -21,19 +21,19 @@ export function SwarmAnalysisTabs() {
     arr.length ? arr.join("\n\n") : "Waiting for agent output…";
 
   return (
-    <Card className="glass border-white/10 bg-white/5 p-4">
+    <Card className="glass border-white/[0.06] p-4 group hover:-translate-y-0.5 transition-all duration-300">
       <Tabs defaultValue="plan">
-        <TabsList className="bg-background/50 border border-white/10 mb-4 flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="plan" className="data-[state=active]:bg-primary data-[state=active]:text-white text-xs">
+        <TabsList className="bg-white/[0.03] border border-white/[0.06] mb-4 flex flex-wrap h-auto gap-1 p-1 rounded-xl">
+          <TabsTrigger value="plan" className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-xs rounded-lg transition-all duration-300">
             Plan
           </TabsTrigger>
-          <TabsTrigger value="orchestrator" className="data-[state=active]:bg-primary data-[state=active]:text-white text-xs">
+          <TabsTrigger value="orchestrator" className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-xs rounded-lg transition-all duration-300">
             Issue
           </TabsTrigger>
-          <TabsTrigger value="tests" className="data-[state=active]:bg-primary data-[state=active]:text-white text-xs">
+          <TabsTrigger value="tests" className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-xs rounded-lg transition-all duration-300">
             Tests
           </TabsTrigger>
-          <TabsTrigger value="security" className="data-[state=active]:bg-primary data-[state=active]:text-white text-xs">
+          <TabsTrigger value="security" className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-xs rounded-lg transition-all duration-300">
             Security
           </TabsTrigger>
         </TabsList>

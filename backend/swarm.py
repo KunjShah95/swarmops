@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import shutil
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -47,7 +49,12 @@ class SwarmOrchestrator:
             repo: GitHub repo in format "owner/repo"
             issue_number: GitHub issue number
         """
+        from config import get_settings
+        settings = get_settings()
+
         db = SessionLocal()
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        local_repo_path = os.path.join(backend_dir, ".temp_repos", run_id)
 
         try:
             # Update run status to running
@@ -57,6 +64,13 @@ class SwarmOrchestrator:
                 return
 
             run.status = "running"
+            
+            orchestrator_state = db.query(AgentState).filter(
+                AgentState.run_id == run_id, AgentState.agent_name == "orchestrator"
+            ).first()
+            if orchestrator_state:
+                orchestrator_state.status = "thinking"
+                
             db.commit()
 
             # Fetch GitHub issue and repo context
@@ -98,12 +112,76 @@ class SwarmOrchestrator:
                 print(f"[WARN] Could not fetch file tree: {e}")
                 repo_context["file_tree"] = []
 
+            # Perform cloning or mock setup
+            os.makedirs(local_repo_path, exist_ok=True)
+            is_mock_run = False
+            try:
+                token = settings.github_token
+                is_dummy = not token or token.startswith("github_pat_11BE6NCS") or "your_token" in token
+                if is_dummy:
+                    raise Exception("Using placeholder GITHUB_TOKEN, skipping clone.")
+                github_service.clone_repository(
+                    repo, repo_context.get("default_branch", "main"), local_repo_path
+                )
+            except Exception as e:
+                print(f"[WARN] Clone repository failed: {e}. Setting up local mock repository.")
+                is_mock_run = True
+                mock_files = {
+                    "src/main.js": (
+                        "// SwarmOps Mock Application Core\n"
+                        "function processReport(data) {\n"
+                        "  console.log(\"Processing report data...\");\n"
+                        "  const lines = [];\n"
+                        "  const issue = data;\n"
+                        "  if (issue) {\n"
+                        "    lines.push(`   📝 ${issue.message}`);\n"
+                        "  }\n"
+                        "  return lines;\n"
+                        "}\n"
+                        "module.exports = { processReport };\n"
+                    ),
+                    "tests/test_report.js": (
+                        "const assert = require('assert');\n"
+                        "const { processReport } = require('../src/main');\n\n"
+                        "try {\n"
+                        "  const lines = processReport({ message: 'Error found', type: 'bug' });\n"
+                        "  assert.ok(lines.length > 0, 'Should return output lines');\n"
+                        "  assert.ok(lines[0].includes('[BUG]'), 'Category label [BUG] should be prepended to the message');\n"
+                        "  console.log('Tests passed!');\n"
+                        "} catch (e) {\n"
+                        "  console.error('Test assertion failed:', e.message);\n"
+                        "  process.exit(1);\n"
+                        "}\n"
+                    ),
+                    "package.json": (
+                        "{\n"
+                        "  \"name\": \"mock-app\",\n"
+                        "  \"version\": \"1.0.0\",\n"
+                        "  \"scripts\": {\n"
+                        "    \"test\": \"node tests/test_report.js\"\n"
+                        "  }\n"
+                        "}\n"
+                    )
+                }
+                for fname, fcontent in mock_files.items():
+                    fpath = os.path.join(local_repo_path, fname)
+                    os.makedirs(os.path.dirname(fpath), exist_ok=True)
+                    with open(fpath, "w", encoding="utf-8") as f:
+                        f.write(fcontent)
+                repo_context["file_tree"] = list(mock_files.keys())
+
             # Build shared context
-            context = {"issue": issue, "repo": repo_context, "run_id": run_id}
+            context = {
+                "issue": issue,
+                "repo": repo_context,
+                "run_id": run_id,
+                "local_repo_path": local_repo_path,
+                "is_mock_run": is_mock_run
+            }
 
             # Execute agents in sequence
-            await self._execute_orchestrator(run_id, context, db)
-            await self._execute_planner(run_id, context, db)
+            await self._execute_orchestrator(run_id, context)
+            await self._execute_planner(run_id, context)
 
             # Fetch file contents for files the planner identified
             planner_output = context.get("planner_output", {})
@@ -118,29 +196,42 @@ class SwarmOrchestrator:
                 plan["files_to_change"] = files_to_change
                 context["planner_output"] = {"plan": plan}
                 print(f"[INFO] Swarm resolved files heuristically: {files_to_change}")
+
             file_contents = {}
             for f in files_to_change:
                 fname = f.split(":")[0] if ":" in f else f
                 fname = fname.lstrip("/")
+                fpath = os.path.join(local_repo_path, fname)
                 try:
-                    content = github_service.get_file_content(
-                        repo, fname, repo_context.get("default_branch", "main")
-                    )
-                    file_contents[fname] = content
+                    if os.path.exists(fpath):
+                        with open(fpath, "r", encoding="utf-8") as file_obj:
+                            file_contents[fname] = file_obj.read()
+                    else:
+                        content = github_service.get_file_content(
+                            repo, fname, repo_context.get("default_branch", "main")
+                        )
+                        file_contents[fname] = content
                 except Exception as e2:
                     print(f"[WARN] Could not fetch {fname}: {e2}")
             context["file_contents"] = file_contents
-            print(f"[INFO] Fetched {len(file_contents)} file(s) for code_writer context")
+            print(f"[INFO] Loaded {len(file_contents)} file(s) for code_writer context")
 
-            await self._execute_code_writer(run_id, context, db)
-            await self._execute_test_runner(run_id, context, db)
-            await self._execute_security(run_id, context, db)
-            await self._execute_pr_opener(run_id, context, db)
+            await self._execute_code_writer(run_id, context)
 
-            # Mark run as completed
-            run.status = "completed"
-            run.completed_at = datetime.now()
-            db.commit()
+            # Parallel execution of Test Runner and Security Auditor
+            await asyncio.gather(
+                self._execute_test_runner(run_id, context),
+                self._execute_security(run_id, context)
+            )
+
+            await self._execute_pr_opener(run_id, context)
+
+            # Refetch run to update status cleanly
+            run = db.query(Run).filter(Run.id == run_id).first()
+            if run:
+                run.status = "completed"
+                run.completed_at = datetime.now()
+                db.commit()
 
             print(f"[OK] Swarm execution completed for run {run_id}")
 
@@ -155,293 +246,313 @@ class SwarmOrchestrator:
 
         finally:
             db.close()
+            # Clean up local repo directory
+            try:
+                if os.path.exists(local_repo_path):
+                    import time
+                    time.sleep(0.5)
+                    shutil.rmtree(local_repo_path)
+            except Exception as cleanup_err:
+                print(f"[WARN] Failed to clean up temp repo directory: {cleanup_err}")
 
-    async def _execute_orchestrator(self, run_id: str, context: Dict, db: Session):
+    async def _execute_orchestrator(self, run_id: str, context: Dict):
         """Execute Orchestrator agent."""
         agent = self.registry.get("orchestrator")
         if not agent:
             return
 
-        # Update agent state
-        state = (
-            db.query(AgentState)
-            .filter(AgentState.run_id == run_id, AgentState.agent_name == "orchestrator")
-            .first()
-        )
+        db = SessionLocal()
+        try:
+            state = db.query(AgentState).filter(
+                AgentState.run_id == run_id, AgentState.agent_name == "orchestrator"
+            ).first()
 
-        if state:
-            state.status = "thinking"
-            db.commit()
+            if state:
+                state.status = "thinking"
+                db.commit()
 
-        # Execute agent
-        message = await agent.think(context)
+            message = await agent.think(context)
 
-        # Save message
-        msg = AgentMessage(
-            id=str(uuid.uuid4()),
-            run_id=run_id,
-            agent_name=message.agent_name,
-            content=message.content,
-            message_type=message.message_type,
-            data=json.dumps(message.data) if message.data else None,
-            sequence=await self._get_next_sequence(run_id, db),
-        )
-        db.add(msg)
+            msg = AgentMessage(
+                id=str(uuid.uuid4()),
+                run_id=run_id,
+                agent_name=message.agent_name,
+                content=message.content,
+                message_type=message.message_type,
+                data=json.dumps(message.data) if message.data else None,
+                sequence=await self._get_next_sequence(run_id),
+            )
+            db.add(msg)
 
-        # Update state
-        if state:
-            state.status = "completed"
-            state.output = json.dumps(message.data) if message.data else None
-            state.confidence = agent.confidence
-            state.current_task = agent.current_task
-            state.started_at = agent.started_at
-            state.completed_at = agent.completed_at
-            db.commit()
+            if state:
+                state.status = "completed"
+                state.output = json.dumps(message.data) if message.data else None
+                state.confidence = agent.confidence
+                state.current_task = agent.current_task
+                state.started_at = agent.started_at
+                state.completed_at = agent.completed_at
+                db.commit()
 
-        # Update run current agent
-        run = db.query(Run).filter(Run.id == run_id).first()
-        if run:
-            run.current_agent = "planner"
-            db.commit()
+            run = db.query(Run).filter(Run.id == run_id).first()
+            if run:
+                run.current_agent = "planner"
+                db.commit()
 
-        # Add orchestrator output to context
-        context["orchestrator_output"] = message.data
+            context["orchestrator_output"] = message.data
+        finally:
+            db.close()
 
-    async def _execute_planner(self, run_id: str, context: Dict, db: Session):
+    async def _execute_planner(self, run_id: str, context: Dict):
         """Execute Planner agent."""
         agent = self.registry.get("planner")
         if not agent:
             return
 
-        state = (
-            db.query(AgentState)
-            .filter(AgentState.run_id == run_id, AgentState.agent_name == "planner")
-            .first()
-        )
+        db = SessionLocal()
+        try:
+            state = db.query(AgentState).filter(
+                AgentState.run_id == run_id, AgentState.agent_name == "planner"
+            ).first()
 
-        if state:
-            state.status = "thinking"
-            db.commit()
+            if state:
+                state.status = "thinking"
+                db.commit()
 
-        message = await agent.think(context)
+            message = await agent.think(context)
 
-        msg = AgentMessage(
-            id=str(uuid.uuid4()),
-            run_id=run_id,
-            agent_name=message.agent_name,
-            content=message.content,
-            message_type=message.message_type,
-            data=json.dumps(message.data) if message.data else None,
-            sequence=await self._get_next_sequence(run_id, db),
-        )
-        db.add(msg)
+            msg = AgentMessage(
+                id=str(uuid.uuid4()),
+                run_id=run_id,
+                agent_name=message.agent_name,
+                content=message.content,
+                message_type=message.message_type,
+                data=json.dumps(message.data) if message.data else None,
+                sequence=await self._get_next_sequence(run_id),
+            )
+            db.add(msg)
 
-        if state:
-            state.status = "completed"
-            state.output = json.dumps(message.data) if message.data else None
-            state.confidence = agent.confidence
-            state.current_task = agent.current_task
-            state.started_at = agent.started_at
-            state.completed_at = agent.completed_at
-            db.commit()
+            if state:
+                state.status = "completed"
+                state.output = json.dumps(message.data) if message.data else None
+                state.confidence = agent.confidence
+                state.current_task = agent.current_task
+                state.started_at = agent.started_at
+                state.completed_at = agent.completed_at
+                db.commit()
 
-        run = db.query(Run).filter(Run.id == run_id).first()
-        if run:
-            run.current_agent = "code_writer"
-            db.commit()
+            run = db.query(Run).filter(Run.id == run_id).first()
+            if run:
+                run.current_agent = "code_writer"
+                db.commit()
 
-        context["planner_output"] = message.data
+            context["planner_output"] = message.data
+        finally:
+            db.close()
 
-    async def _execute_code_writer(self, run_id: str, context: Dict, db: Session):
+    async def _execute_code_writer(self, run_id: str, context: Dict):
         """Execute Code Writer agent."""
         agent = self.registry.get("code_writer")
         if not agent:
             return
 
-        state = (
-            db.query(AgentState)
-            .filter(AgentState.run_id == run_id, AgentState.agent_name == "code_writer")
-            .first()
-        )
+        db = SessionLocal()
+        try:
+            state = db.query(AgentState).filter(
+                AgentState.run_id == run_id, AgentState.agent_name == "code_writer"
+            ).first()
 
-        if state:
-            state.status = "thinking"
-            db.commit()
+            if state:
+                state.status = "thinking"
+                db.commit()
 
-        message = await agent.think(context)
+            message = await agent.think(context)
 
-        msg = AgentMessage(
-            id=str(uuid.uuid4()),
-            run_id=run_id,
-            agent_name=message.agent_name,
-            content=message.content,
-            message_type=message.message_type,
-            data=json.dumps(message.data) if message.data else None,
-            sequence=await self._get_next_sequence(run_id, db),
-        )
-        db.add(msg)
+            # Write code_writer's modified file_contents back to the local_repo_path
+            # so the subsequent parallel agents (test_runner, security) read the modified version!
+            local_repo_path = context.get("local_repo_path")
+            cw_data = message.data or {}
+            modified_contents = cw_data.get("file_contents", {})
+            if local_repo_path and os.path.exists(local_repo_path) and modified_contents:
+                for fname, fcontent in modified_contents.items():
+                    fpath = os.path.join(local_repo_path, fname)
+                    os.makedirs(os.path.dirname(fpath), exist_ok=True)
+                    with open(fpath, "w", encoding="utf-8") as file_obj:
+                        file_obj.write(fcontent)
+                print(f"[INFO] Wrote {len(modified_contents)} updated file(s) to local repository.")
 
-        if state:
-            state.status = "completed"
-            state.output = json.dumps(message.data) if message.data else None
-            state.confidence = agent.confidence
-            state.current_task = agent.current_task
-            state.started_at = agent.started_at
-            state.completed_at = agent.completed_at
-            db.commit()
+            msg = AgentMessage(
+                id=str(uuid.uuid4()),
+                run_id=run_id,
+                agent_name=message.agent_name,
+                content=message.content,
+                message_type=message.message_type,
+                data=json.dumps(message.data) if message.data else None,
+                sequence=await self._get_next_sequence(run_id),
+            )
+            db.add(msg)
 
-        run = db.query(Run).filter(Run.id == run_id).first()
-        if run:
-            run.current_agent = "test_runner"
-            db.commit()
+            if state:
+                state.status = "completed"
+                state.output = json.dumps(message.data) if message.data else None
+                state.confidence = agent.confidence
+                state.current_task = agent.current_task
+                state.started_at = agent.started_at
+                state.completed_at = agent.completed_at
+                db.commit()
 
-        context["code_writer_output"] = message.data
+            run = db.query(Run).filter(Run.id == run_id).first()
+            if run:
+                run.current_agent = "test_runner"
+                db.commit()
 
-    async def _execute_test_runner(self, run_id: str, context: Dict, db: Session):
+            context["code_writer_output"] = message.data
+        finally:
+            db.close()
+
+    async def _execute_test_runner(self, run_id: str, context: Dict):
         """Execute Test Runner agent."""
         agent = self.registry.get("test_runner")
         if not agent:
             return
 
-        state = (
-            db.query(AgentState)
-            .filter(AgentState.run_id == run_id, AgentState.agent_name == "test_runner")
-            .first()
-        )
+        db = SessionLocal()
+        try:
+            state = db.query(AgentState).filter(
+                AgentState.run_id == run_id, AgentState.agent_name == "test_runner"
+            ).first()
 
-        if state:
-            state.status = "thinking"
-            db.commit()
+            if state:
+                state.status = "thinking"
+                db.commit()
 
-        message = await agent.think(context)
+            message = await agent.think(context)
 
-        msg = AgentMessage(
-            id=str(uuid.uuid4()),
-            run_id=run_id,
-            agent_name=message.agent_name,
-            content=message.content,
-            message_type=message.message_type,
-            data=json.dumps(message.data) if message.data else None,
-            sequence=await self._get_next_sequence(run_id, db),
-        )
-        db.add(msg)
+            msg = AgentMessage(
+                id=str(uuid.uuid4()),
+                run_id=run_id,
+                agent_name=message.agent_name,
+                content=message.content,
+                message_type=message.message_type,
+                data=json.dumps(message.data) if message.data else None,
+                sequence=await self._get_next_sequence(run_id),
+            )
+            db.add(msg)
 
-        if state:
-            state.status = "completed"
-            state.output = json.dumps(message.data) if message.data else None
-            state.confidence = agent.confidence
-            state.current_task = agent.current_task
-            state.started_at = agent.started_at
-            state.completed_at = agent.completed_at
-            db.commit()
+            if state:
+                state.status = "completed"
+                state.output = json.dumps(message.data) if message.data else None
+                state.confidence = agent.confidence
+                state.current_task = agent.current_task
+                state.started_at = agent.started_at
+                state.completed_at = agent.completed_at
+                db.commit()
 
-        run = db.query(Run).filter(Run.id == run_id).first()
-        if run:
-            run.current_agent = "security_auditor"
-            db.commit()
+            context["test_runner_output"] = message.data
+        finally:
+            db.close()
 
-        context["test_runner_output"] = message.data
-
-    async def _execute_security(self, run_id: str, context: Dict, db: Session):
+    async def _execute_security(self, run_id: str, context: Dict):
         """Execute Security Auditor agent."""
         agent = self.registry.get("security_auditor")
         if not agent:
             return
 
-        state = (
-            db.query(AgentState)
-            .filter(AgentState.run_id == run_id, AgentState.agent_name == "security_auditor")
-            .first()
-        )
+        db = SessionLocal()
+        try:
+            state = db.query(AgentState).filter(
+                AgentState.run_id == run_id, AgentState.agent_name == "security_auditor"
+            ).first()
 
-        if state:
-            state.status = "thinking"
-            db.commit()
+            if state:
+                state.status = "thinking"
+                db.commit()
 
-        message = await agent.think(context)
+            message = await agent.think(context)
 
-        msg = AgentMessage(
-            id=str(uuid.uuid4()),
-            run_id=run_id,
-            agent_name=message.agent_name,
-            content=message.content,
-            message_type=message.message_type,
-            data=json.dumps(message.data) if message.data else None,
-            sequence=await self._get_next_sequence(run_id, db),
-        )
-        db.add(msg)
+            msg = AgentMessage(
+                id=str(uuid.uuid4()),
+                run_id=run_id,
+                agent_name=message.agent_name,
+                content=message.content,
+                message_type=message.message_type,
+                data=json.dumps(message.data) if message.data else None,
+                sequence=await self._get_next_sequence(run_id),
+            )
+            db.add(msg)
 
-        if state:
-            state.status = "completed"
-            state.output = json.dumps(message.data) if message.data else None
-            state.confidence = agent.confidence
-            state.current_task = agent.current_task
-            state.started_at = agent.started_at
-            state.completed_at = agent.completed_at
-            db.commit()
+            if state:
+                state.status = "completed"
+                state.output = json.dumps(message.data) if message.data else None
+                state.confidence = agent.confidence
+                state.current_task = agent.current_task
+                state.started_at = agent.started_at
+                state.completed_at = agent.completed_at
+                db.commit()
 
-        run = db.query(Run).filter(Run.id == run_id).first()
-        if run:
-            run.current_agent = "pr_opener"
-            db.commit()
+            context["security_auditor_output"] = message.data
+        finally:
+            db.close()
 
-        context["security_auditor_output"] = message.data
-
-    async def _execute_pr_opener(self, run_id: str, context: Dict, db: Session):
+    async def _execute_pr_opener(self, run_id: str, context: Dict):
         """Execute PR Opener agent."""
         agent = self.registry.get("pr_opener")
         if not agent:
             return
 
-        state = (
-            db.query(AgentState)
-            .filter(AgentState.run_id == run_id, AgentState.agent_name == "pr_opener")
-            .first()
-        )
+        db = SessionLocal()
+        try:
+            state = db.query(AgentState).filter(
+                AgentState.run_id == run_id, AgentState.agent_name == "pr_opener"
+            ).first()
 
-        if state:
-            state.status = "thinking"
-            db.commit()
+            if state:
+                state.status = "thinking"
+                db.commit()
 
-        message = await agent.think(context)
+            message = await agent.think(context)
 
-        msg = AgentMessage(
-            id=str(uuid.uuid4()),
-            run_id=run_id,
-            agent_name=message.agent_name,
-            content=message.content,
-            message_type=message.message_type,
-            data=json.dumps(message.data) if message.data else None,
-            sequence=await self._get_next_sequence(run_id, db),
-        )
-        db.add(msg)
+            msg = AgentMessage(
+                id=str(uuid.uuid4()),
+                run_id=run_id,
+                agent_name=message.agent_name,
+                content=message.content,
+                message_type=message.message_type,
+                data=json.dumps(message.data) if message.data else None,
+                sequence=await self._get_next_sequence(run_id),
+            )
+            db.add(msg)
 
-        if state:
-            state.status = "completed"
-            state.output = json.dumps(message.data) if message.data else None
-            state.confidence = agent.confidence
-            state.current_task = agent.current_task
-            state.started_at = agent.started_at
-            state.completed_at = agent.completed_at
-            db.commit()
+            if state:
+                state.status = "completed"
+                state.output = json.dumps(message.data) if message.data else None
+                state.confidence = agent.confidence
+                state.current_task = agent.current_task
+                state.started_at = agent.started_at
+                state.completed_at = agent.completed_at
+                db.commit()
 
-        # Update run with PR URL
-        run = db.query(Run).filter(Run.id == run_id).first()
-        if run and message.data:
-            run.pr_url = message.data.get("pr_url")
-            run.current_agent = None
-            db.commit()
+            # Update run with PR URL
+            run = db.query(Run).filter(Run.id == run_id).first()
+            if run:
+                run.pr_url = message.data.get("pr_url") if message.data else None
+                run.current_agent = None
+                db.commit()
+        finally:
+            db.close()
 
-    async def _get_next_sequence(self, run_id: str, db: Session) -> int:
+    async def _get_next_sequence(self, run_id: str) -> int:
         """Get the next message sequence number for a run."""
-        last_msg = (
-            db.query(AgentMessage)
-            .filter(AgentMessage.run_id == run_id)
-            .order_by(AgentMessage.sequence.desc())
-            .first()
-        )
-
-        return (last_msg.sequence + 1) if last_msg else 1
+        db = SessionLocal()
+        try:
+            last_msg = (
+                db.query(AgentMessage)
+                .filter(AgentMessage.run_id == run_id)
+                .order_by(AgentMessage.sequence.desc())
+                .first()
+            )
+            return (last_msg.sequence + 1) if last_msg else 1
+        finally:
+            db.close()
 
 
 # Global swarm orchestrator instance

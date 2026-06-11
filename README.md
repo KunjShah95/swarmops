@@ -646,7 +646,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Open **http://localhost** → **Dashboard** → paste an issue URL → **Auto-Fix Issue**.
+Open **<http://localhost>** → **Dashboard** → paste an issue URL → **Auto-Fix Issue**.
 
 Windows shortcut: `start-docker.bat`
 
@@ -678,7 +678,7 @@ set BACKEND_URL=http://127.0.0.1:8000   # Windows
 npm run dev
 ```
 
-Open **http://localhost:3000**
+Open **<http://localhost:3000>**
 
 **Both at once (Windows):** `start-all.bat`
 
@@ -743,7 +743,7 @@ Base URL: `http://localhost:8000` (Docker backend) or proxied via Next.js rewrit
 | `GET` | `/api/runs` | Paginated run history (`limit`, `offset`, `status`) |
 | `GET` | `/api/runs/stats` | Totals: completed, failed, running |
 
-Interactive OpenAPI docs: **http://localhost:8000/docs** (when backend is running).
+Interactive OpenAPI docs: **<http://localhost:8000/docs>** (when backend is running).
 
 ### Start a run
 
@@ -892,8 +892,8 @@ The production path uses the custom `swarm.py` orchestrator; LLM calls go throug
 
 | Method | Command | URL |
 |--------|---------|-----|
-| Docker Compose | `docker compose up --build -d` | http://localhost |
-| Local dev | `start-all.bat` or backend + `npm run dev` in `frontend/` | http://localhost:3000 |
+| Docker Compose | `docker compose up --build -d` | <http://localhost> |
+| Local dev | `start-all.bat` or backend + `npm run dev` in `frontend/` | <http://localhost:3000> |
 | Production build | `cd frontend && npm run build && npm start` | Port 3000 |
 
 Health: `GET http://localhost:8000/health`

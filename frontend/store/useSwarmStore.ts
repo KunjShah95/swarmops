@@ -17,6 +17,8 @@ interface SwarmState {
   error: string | null;
   runId: string | null;
   issueUrl: string;
+  tokensUsed: number;
+  estimatedCost: number;
   addMessage: (msg: AgentMessage) => void;
   updateAgentStatus: (agent: string, status: string) => void;
   setRunStatus: (status: string) => void;
@@ -24,6 +26,8 @@ interface SwarmState {
   setError: (error: string | null) => void;
   setRunId: (runId: string | null) => void;
   setIssueUrl: (url: string) => void;
+  setTokensUsed: (tokens: number) => void;
+  setEstimatedCost: (cost: number) => void;
   reset: () => void;
 }
 
@@ -44,6 +48,8 @@ export const useSwarmStore = create<SwarmState>((set) => ({
   error: null,
   runId: null,
   issueUrl: "",
+  tokensUsed: 0,
+  estimatedCost: 0.0,
 
   addMessage: (msg) =>
     set((state) => ({
@@ -60,6 +66,8 @@ export const useSwarmStore = create<SwarmState>((set) => ({
   setError: (error) => set({ error }),
   setRunId: (runId) => set({ runId }),
   setIssueUrl: (url) => set({ issueUrl: url }),
+  setTokensUsed: (tokensUsed) => set({ tokensUsed }),
+  setEstimatedCost: (estimatedCost) => set({ estimatedCost }),
 
   reset: () =>
     set((state) => ({
@@ -70,5 +78,7 @@ export const useSwarmStore = create<SwarmState>((set) => ({
       error: null,
       runId: null,
       issueUrl: state.issueUrl,
+      tokensUsed: 0,
+      estimatedCost: 0.0,
     })),
 }));

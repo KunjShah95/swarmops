@@ -58,7 +58,7 @@ check("Status is started", data.get("status") == "started")
 # 3. Poll for completion
 import time
 
-for i in range(30):
+for i in range(120):  # 60s window: LLM-chained swarm can take 30-60s
     time.sleep(0.5)
     r = client.get(f"/api/issues/{run_id}")
     status = r.json().get("status", "")

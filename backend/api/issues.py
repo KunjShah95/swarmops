@@ -112,6 +112,8 @@ async def get_run_status(run_id: str, db: Session = Depends(get_db)):
         "pr_url": run.pr_url,
         "created_at": run.created_at,
         "completed_at": run.completed_at,
+        "tokens_used": run.tokens_used or 0,
+        "estimated_cost": run.estimated_cost or 0.0,
         "agents": [
             {
                 "name": state.agent_name,

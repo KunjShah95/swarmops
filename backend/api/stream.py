@@ -21,6 +21,10 @@ def _fetch_updates(run_id: str, last_sequence: int, last_status_updates: dict):
     """
     db = SessionLocal()
     try:
+        run = db.query(Run).filter(Run.id == run_id).first()
+        tokens_used = run.tokens_used if run else 0
+        estimated_cost = run.estimated_cost if run else 0.0
+
         # Poll for agent state changes (status updates)
         status_changes = []
         agent_states = db.query(AgentState).filter(AgentState.run_id == run_id).all()
@@ -29,7 +33,13 @@ def _fetch_updates(run_id: str, last_sequence: int, last_status_updates: dict):
             if prev != state.status:
                 last_status_updates[state.agent_name] = state.status
                 status_changes.append(
-                    {"event": "status", "agent": state.agent_name, "status": state.status}
+                    {
+                        "event": "status",
+                        "agent": state.agent_name,
+                        "status": state.status,
+                        "tokens_used": tokens_used,
+                        "estimated_cost": estimated_cost,
+                    }
                 )
 
         # Poll for new messages
@@ -51,11 +61,12 @@ def _fetch_updates(run_id: str, last_sequence: int, last_status_updates: dict):
                     "data": parsed_data,
                     "sequence": msg.sequence,
                     "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+                    "tokens_used": tokens_used,
+                    "estimated_cost": estimated_cost,
                 }
             )
 
         # Check if run is complete
-        run = db.query(Run).filter(Run.id == run_id).first()
         completion = None
         if run and run.status in ["completed", "failed"]:
             completion = {
@@ -63,6 +74,8 @@ def _fetch_updates(run_id: str, last_sequence: int, last_status_updates: dict):
                 "status": run.status,
                 "pr_url": run.pr_url,
                 "error": run.error,
+                "tokens_used": tokens_used,
+                "estimated_cost": estimated_cost,
             }
 
         return status_changes, new_messages, completion

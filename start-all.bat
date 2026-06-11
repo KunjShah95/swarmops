@@ -6,7 +6,7 @@ echo   Microsoft Build with AI Hackathon 2026
 echo ==========================================
 echo.
 echo Starting Backend (port 8000)...
-start "SwarmOps Backend" cmd /c "cd /d "%~dp0backend" && uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+start "SwarmOps Backend" cmd /c "cd /d "%~dp0backend" && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
 echo.
 echo Waiting for backend to initialize...
 timeout /t 3 /nobreak >nul

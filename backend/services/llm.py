@@ -135,6 +135,9 @@ class LLMService:
                     content = self._call_provider(
                         provider, client, system_prompt, user_msg, temperature
                     )
+                    self._track_tokens_and_cost(
+                        provider, system_prompt, user_msg, content, context.get("run_id")
+                    )
                     return content, 0.95
                 except Exception as e:
                     last_error = e
@@ -210,6 +213,50 @@ class LLMService:
             return result.get("content", [{}])[0].get("text", "")
 
         raise ValueError(f"Unknown provider: {provider}")
+
+    def _track_tokens_and_cost(
+        self,
+        provider: str,
+        system_prompt: str,
+        user_msg: str,
+        response_text: str,
+        run_id: Optional[str]
+    ):
+        if not run_id:
+            return
+
+        # Estimate tokens (1 word ~ 1.33 tokens)
+        in_tokens = int((len(system_prompt.split()) + len(user_msg.split())) * 1.33)
+        out_tokens = int(len(response_text.split()) * 1.33)
+
+        # Cost per 1M tokens: (input, output) rates
+        rates = {
+            "gemini": (0.075, 0.30),
+            "groq": (0.05, 0.08),
+            "azure": (2.50, 10.00),
+            "openrouter": (2.50, 10.00),
+            "bedrock": (3.00, 15.00),
+            "fallback": (0.0, 0.0)
+        }
+
+        in_rate, out_rate = rates.get(provider, (1.0, 3.0))
+        cost = ((in_tokens * in_rate) + (out_tokens * out_rate)) / 1_000_000.0
+
+        # Update DB using a fresh session to ensure async-safety
+        from database import SessionLocal
+        from models import Run
+        db = SessionLocal()
+        try:
+            run = db.query(Run).filter(Run.id == run_id).first()
+            if run:
+                run.tokens_used = (run.tokens_used or 0) + in_tokens + out_tokens
+                run.estimated_cost = (run.estimated_cost or 0.0) + cost
+                db.commit()
+                print(f"[METRIC] Run {run_id[:8]}: +{in_tokens+out_tokens} tokens, +${cost:.6f}")
+        except Exception as e:
+            print(f"[WARN] Failed to track token metrics: {e}")
+        finally:
+            db.close()
 
     def _smart_fallback(self, system_prompt: str, context: Dict[str, Any]) -> tuple[str, float]:
         """Returns structured analysis based on context without calling any LLM."""

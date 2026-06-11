@@ -193,6 +193,46 @@ class GitHubService:
         except Exception as e:
             raise Exception(f"Failed to fetch commits: {str(e)}")
 
+    def clone_repository(self, repo: str, branch: str = "main", dest_dir: str = None) -> str:
+        """Shallow clone a repository to a local directory."""
+        import subprocess
+        import os
+        import shutil
+
+        if not dest_dir:
+            raise ValueError("Destination directory must be specified")
+
+        os.makedirs(dest_dir, exist_ok=True)
+
+        token = settings.github_token
+        is_dummy = not token or token.startswith("github_pat_11BE6NCS") or "your_token" in token
+
+        if token and not is_dummy:
+            url = f"https://x-access-token:{token}@github.com/{repo}.git"
+        else:
+            url = f"https://github.com/{repo}.git"
+
+        print(f"[INFO] Cloning {repo} (branch: {branch}) into {dest_dir}...")
+
+        try:
+            # Clean dest_dir if it already has files (safeguard)
+            if os.path.exists(dest_dir) and os.listdir(dest_dir):
+                shutil.rmtree(dest_dir)
+                os.makedirs(dest_dir, exist_ok=True)
+
+            cmd = ["git", "clone", "--depth", "1", "--branch", branch, url, "."]
+            res = subprocess.run(cmd, cwd=dest_dir, capture_output=True, text=True, timeout=30)
+            if res.returncode != 0:
+                print(f"[WARN] Failed to clone branch {branch}, attempting default branch clone...")
+                cmd = ["git", "clone", "--depth", "1", url, "."]
+                res2 = subprocess.run(cmd, cwd=dest_dir, capture_output=True, text=True, timeout=30)
+                if res2.returncode != 0:
+                    raise Exception(f"git clone failed: {res2.stderr}")
+            print(f"[INFO] Repository cloned successfully.")
+            return dest_dir
+        except Exception as e:
+            raise Exception(f"Failed to clone repository: {str(e)}")
+
 
 # Singleton instance
 _github_service: Optional[GitHubService] = None

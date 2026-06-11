@@ -18,6 +18,8 @@ class Run(Base):
     created_at = Column(DateTime, server_default=func.now())
     completed_at = Column(DateTime, nullable=True)
     error = Column(Text, nullable=True)
+    tokens_used = Column(Integer, default=0)
+    estimated_cost = Column(Float, default=0.0)
 
 
 class AgentMessage(Base):

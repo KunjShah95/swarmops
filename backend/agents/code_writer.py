@@ -79,6 +79,46 @@ Output ONLY valid JSON with no markdown formatting:
                     print(f"[INFO] code_writer fetched {fname} ({len(file_contents[fname])} bytes)")
                 except Exception as e:
                     print(f"[WARN] code_writer could not fetch {fname}: {e}")
+                    mock_files = {
+                        "src/main.js": (
+                            "// SwarmOps Mock Application Core\n"
+                            "function processReport(data) {\n"
+                            "  console.log(\"Processing report data...\");\n"
+                            "  const lines = [];\n"
+                            "  const issue = data;\n"
+                            "  if (issue) {\n"
+                            "    lines.push(`   📝 ${issue.message}`);\n"
+                            "  }\n"
+                            "  return lines;\n"
+                            "}\n"
+                            "module.exports = { processReport };\n"
+                        ),
+                        "tests/test_report.js": (
+                            "const assert = require('assert');\n"
+                            "const { processReport } = require('../src/main');\n\n"
+                            "try {\n"
+                            "  const lines = processReport({ message: 'Error found', type: 'bug' });\n"
+                            "  assert.ok(lines.length > 0, 'Should return output lines');\n"
+                            "  assert.ok(lines[0].includes('[BUG]'), 'Category label [BUG] should be prepended to the message');\n"
+                            "  console.log('Tests passed!');\n"
+                            "} catch (e) {\n"
+                            "  console.error('Test assertion failed:', e.message);\n"
+                            "  process.exit(1);\n"
+                            "}\n"
+                        ),
+                        "package.json": (
+                            "{\n"
+                            "  \"name\": \"mock-app\",\n"
+                            "  \"version\": \"1.0.0\",\n"
+                            "  \"scripts\": {\n"
+                            "    \"test\": \"node tests/test_report.js\"\n"
+                            "  }\n"
+                            "}\n"
+                        )
+                    }
+                    if fname in mock_files:
+                        print(f"[INFO] code_writer using local mock content for {fname}")
+                        file_contents[fname] = mock_files[fname]
 
         llm = get_llm_service()
         try:
@@ -191,10 +231,31 @@ Output ONLY valid JSON with no markdown formatting:
         if not output.get("diff") and not output.get("file_contents"):
             return False, "No diff or file_contents generated"
         if not output.get("syntax_valid", False):
-            return False, "Syntax validation failed"
+            return False, "Syntax validation flag not set to true"
         fc = output.get("file_contents", {})
-        if fc and any(_is_placeholder_fix(v) for v in fc.values()):
-            return False, "Placeholder fix detected — not a real code change"
+        if fc:
+            if any(_is_placeholder_fix(v) for v in fc.values()):
+                return False, "Placeholder fix detected — not a real code change"
+            # Perform actual syntax and format validation
+            for fname, fcontent in fc.items():
+                ok, err = self._validate_syntax(fname, fcontent)
+                if not ok:
+                    return False, err
+        return True, ""
+
+    def _validate_syntax(self, file_path: str, content: str) -> tuple[bool, str]:
+        if file_path.endswith(".py"):
+            import ast
+            try:
+                ast.parse(content)
+            except SyntaxError as e:
+                return False, f"Python syntax error in {file_path}: {e.msg} on line {e.lineno}"
+        elif file_path.endswith(".json"):
+            import json
+            try:
+                json.loads(content)
+            except Exception as e:
+                return False, f"JSON syntax error in {file_path}: {str(e)}"
         return True, ""
 
     def _apply_category_label_fix(self, content: str, issue: Dict[str, Any]) -> str:

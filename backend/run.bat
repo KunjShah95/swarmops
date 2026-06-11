@@ -61,7 +61,7 @@ echo Backend will run on: http://localhost:8000
 echo API docs: http://localhost:8000/docs
 echo.
 
-uvicorn main:app --reload --port 8000
+python -m uvicorn main:app --reload --port 8000
 
 REM Deactivate on exit
 call deactivate

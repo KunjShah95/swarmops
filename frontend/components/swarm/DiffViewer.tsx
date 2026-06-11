@@ -15,7 +15,7 @@ export function DiffViewer() {
 
   if (codeMessages.length === 0) {
     return (
-      <Card className="glass border-white/10 p-6">
+      <Card className="glass border-white/[0.06] p-6">
         <h3 className="font-semibold text-white mb-2">Code Diff</h3>
         <p className="text-sm text-muted-foreground text-center py-6">
           Waiting for Code Writer agent…
@@ -30,10 +30,10 @@ export function DiffViewer() {
   const filesChanged = codeData?.files_changed || [];
 
   return (
-    <Card className="glass border-white/10 overflow-hidden">
-      <div className="p-4 border-b border-white/10 flex justify-between items-center">
+    <Card className="glass border-white/[0.06] overflow-hidden group hover:-translate-y-0.5 transition-all duration-300">
+      <div className="p-4 border-b border-white/[0.06] flex justify-between items-center">
         <h3 className="font-semibold text-white">Code Changes</h3>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-primary bg-primary/10 px-2 py-1 rounded-full">
           {filesChanged.length} file{filesChanged.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -41,11 +41,11 @@ export function DiffViewer() {
         <pre className="text-xs font-mono">
           {diff.split("\n").map((line, index) => {
             let lineClass = "text-gray-300";
-            if (line.startsWith("+")) lineClass = "text-green-400 bg-green-500/10";
+            if (line.startsWith("+")) lineClass = "text-emerald-400 bg-emerald-500/10";
             else if (line.startsWith("-")) lineClass = "text-red-400 bg-red-500/10";
-            else if (line.startsWith("@@")) lineClass = "text-blue-400";
+            else if (line.startsWith("@@")) lineClass = "text-primary";
             return (
-              <div key={index} className={`${lineClass} px-2 py-0.5`}>
+              <div key={index} className={`${lineClass} px-2 py-0.5 rounded`}>
                 {line}
               </div>
             );
@@ -53,7 +53,7 @@ export function DiffViewer() {
         </pre>
       </div>
       {codeData?.summary && (
-        <div className="p-4 border-t border-white/10 text-sm text-muted-foreground">
+        <div className="p-4 border-t border-white/[0.06] text-sm text-muted-foreground">
           <strong className="text-white">Summary:</strong> {codeData.summary}
         </div>
       )}

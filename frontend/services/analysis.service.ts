@@ -2,7 +2,7 @@ import { Insight } from "@/types";
 import { useSwarmStore } from "@/store/useSwarmStore";
 
 export function getInsightsFromRun(): Insight[] {
-  const { messages, runStatus, prUrl } = useSwarmStore.getState();
+  const { messages, runStatus, prUrl, tokensUsed, estimatedCost } = useSwarmStore.getState();
   const codeMsg = [...messages].reverse().find((m) => m.type === "code");
   const testMsg = [...messages].reverse().find((m) => m.type === "test");
   const secMsg = [...messages].reverse().find((m) => m.type === "security");
@@ -62,6 +62,20 @@ export function getInsightsFromRun(): Insight[] {
       value: prUrl ? "Opened" : runStatus === "completed" ? "None" : "Pending",
       description: prUrl ? "PR ready for review" : "Awaiting PR Opener",
       color: prUrl ? "text-green-400" : "text-muted-foreground",
+    },
+    {
+      id: "7",
+      title: "Tokens Consumed",
+      value: tokensUsed,
+      description: "Total LLM tokens used",
+      color: "text-cyan-400",
+    },
+    {
+      id: "8",
+      title: "Estimated Cost",
+      value: `$${estimatedCost.toFixed(4)}`,
+      description: "LLM pricing estimation",
+      color: "text-emerald-400",
     },
   ];
 }
