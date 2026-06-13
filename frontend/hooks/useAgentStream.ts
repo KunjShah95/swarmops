@@ -22,6 +22,7 @@ export function useAgentStream(runId: string | null) {
 
     reset();
     useSwarmStore.setState({ runId });
+    setRunStatus("running");
 
     const eventSource = new EventSource(`/api/stream/${runId}`);
     eventSourceRef.current = eventSource;
@@ -73,7 +74,12 @@ export function useAgentStream(runId: string | null) {
     };
 
     eventSource.onerror = () => {
-      setError("Connection error");
+      // Only set error if the run hasn't already completed or failed
+      // (EventSource fires onerror on normal server-side close too).
+      const currentStatus = useSwarmStore.getState().runStatus;
+      if (currentStatus !== "completed" && currentStatus !== "failed") {
+        setError("Connection error");
+      }
       eventSource.close();
     };
 
@@ -86,3 +92,4 @@ export function useAgentStream(runId: string | null) {
 
   return eventSourceRef;
 }
+

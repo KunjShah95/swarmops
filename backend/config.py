@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     backend_port: int = 8000
 
     # Frontend (for CORS)
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:3000"
     # Comma-separated allowed origins (production). Falls back to frontend_url if empty.
     cors_origins: str = ""
 
@@ -59,9 +59,28 @@ def get_settings() -> Settings:
     return Settings()
 
 
+# Common local-dev and Docker origins that should always be allowed.
+_DEFAULT_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost",
+    "http://127.0.0.1",
+    "http://localhost:80",
+]
+
+
 def get_cors_origins() -> list[str]:
     """Resolve CORS allowlist from CORS_ORIGINS or FRONTEND_URL."""
     settings = get_settings()
     if settings.cors_origins.strip():
-        return [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-    return [settings.frontend_url]
+        origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    else:
+        origins = [settings.frontend_url]
+    # Merge with defaults, de-duplicate while preserving order.
+    seen: set[str] = set()
+    merged: list[str] = []
+    for o in origins + _DEFAULT_ORIGINS:
+        if o not in seen:
+            seen.add(o)
+            merged.append(o)
+    return merged

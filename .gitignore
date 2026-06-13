@@ -17,7 +17,12 @@ backend/.venv/
 .planning
 PRDs/
 
-# Markdown — track README only (root or nested)
+# Markdown — track README and key project docs only
 *.md
 !README.md
 !**/README.md
+!DEPLOY.md
+!HACKATHON.md
+!QUICKSTART.md
+!PROJECT_STATUS.md
+.env

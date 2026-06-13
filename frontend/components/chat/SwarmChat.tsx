@@ -17,7 +17,7 @@ export const SwarmChat = ({ runId }: SwarmChatProps) => {
   const runStatus = useSwarmStore((s) => s.runStatus);
   const prUrl = useSwarmStore((s) => s.prUrl);
   const error = useSwarmStore((s) => s.error);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollSentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unsub = useSwarmStore.subscribe(() => syncFromSwarm());
@@ -25,10 +25,9 @@ export const SwarmChat = ({ runId }: SwarmChatProps) => {
     return unsub;
   }, [syncFromSwarm]);
 
+  // Auto-scroll: scroll the sentinel into view whenever messages change.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    scrollSentinelRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
   const statusLabel =
@@ -69,7 +68,7 @@ export const SwarmChat = ({ runId }: SwarmChatProps) => {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-5" ref={scrollRef}>
+      <ScrollArea className="flex-1 p-5">
         <div className="space-y-1">
           {messages.length === 0 && (
             <p className="text-center text-muted-foreground/50 py-16 text-sm">
@@ -80,6 +79,8 @@ export const SwarmChat = ({ runId }: SwarmChatProps) => {
             <MessageBubble key={msg.id} message={msg} />
           ))}
           {isTyping && <TypingIndicator agentName={typingAgent || undefined} />}
+          {/* Scroll sentinel — scrollIntoView target */}
+          <div ref={scrollSentinelRef} aria-hidden="true" />
         </div>
       </ScrollArea>
 
@@ -99,3 +100,4 @@ export const SwarmChat = ({ runId }: SwarmChatProps) => {
     </div>
   );
 };
+

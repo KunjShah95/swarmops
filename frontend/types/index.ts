@@ -11,6 +11,7 @@ export interface Agent {
     | "speaking"
     | "running";
   avatar: string;
+  key?: string;
 }
 
 export interface ChatMessage {

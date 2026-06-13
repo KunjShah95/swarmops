@@ -26,7 +26,7 @@ const agentBorders: Record<string, string> = {
 };
 
 export const AgentCard = ({ agent }: AgentCardProps) => {
-  const key = agent.name.toLowerCase().replace(/\s+/g, '_');
+  const key = agent.key || agent.name.toLowerCase().replace(/\s+/g, '_');
   const gradient = agentGradients[key] || agentGradients.orchestrator;
   const border = agentBorders[key] || agentBorders.orchestrator;
 
